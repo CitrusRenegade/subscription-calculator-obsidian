@@ -1,0 +1,348 @@
+.subscription-calculator-view {
+  --subscription-card-radius: 8px;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.subscription-calculator-summary {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.subscription-calculator-summary-title,
+.subscription-calculator-summary-values {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.subscription-calculator-summary-values {
+  display: grid;
+  gap: 2px;
+}
+
+.subscription-calculator-summary-subtitle {
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+}
+
+.subscription-calculator-summary-monthly {
+  display: grid;
+  gap: 2px;
+  color: var(--text-normal);
+}
+
+.subscription-calculator-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 12px;
+}
+
+.subscription-calculator-secondary-button {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.subscription-calculator-cards {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  container-type: inline-size;
+}
+
+.subscription-calculator-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--subscription-card-radius);
+  background: var(--background-primary);
+  padding: 6px 4px;
+}
+
+.subscription-calculator-card.is-disabled {
+  opacity: 0.62;
+}
+
+.subscription-calculator-card.is-disable-grace-period {
+  border-style: dashed;
+}
+
+.subscription-calculator-card-top,
+.subscription-calculator-card-controls,
+.subscription-calculator-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subscription-calculator-card-top {
+  grid-column: 1;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.subscription-calculator-card-title,
+.subscription-calculator-table-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.subscription-calculator-card-name,
+.subscription-calculator-table-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subscription-calculator-icon {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+  font-weight: 700;
+}
+
+.subscription-calculator-icon img {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.subscription-calculator-card-controls {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 6px;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.subscription-calculator-money-input {
+  box-sizing: border-box;
+  width: min(
+    100%,
+    clamp(
+      calc(var(--subscription-field-min-ch, 5) * 1ch + 2.2em),
+      calc(var(--subscription-field-ch, 6) * 1ch + 2.2em),
+      calc(var(--subscription-field-max-ch, 14) * 1ch + 2.2em)
+    )
+  );
+  min-width: 0 !important;
+  max-width: 100%;
+  flex: 0 1 auto;
+  padding-inline: 8px;
+  field-sizing: content;
+  font-size: var(--font-ui-small);
+}
+
+.subscription-calculator-select {
+  box-sizing: border-box;
+  width: min(
+    100%,
+    clamp(
+      calc(var(--subscription-field-min-ch, 5) * 1ch + 2.8em),
+      calc(var(--subscription-field-ch, 6) * 1ch + 2.8em),
+      calc(var(--subscription-field-max-ch, 10) * 1ch + 2.8em)
+    )
+  );
+  min-width: 0 !important;
+  max-width: 100%;
+  flex: 0 1 auto;
+  padding-inline: 8px 22px;
+  field-sizing: content;
+  font-size: var(--font-ui-small);
+}
+
+.subscription-calculator-period-select.is-row-fill {
+  width: min(100%, var(--subscription-period-row-width, 100%));
+  flex-basis: min(100%, var(--subscription-period-row-width, 100%));
+}
+
+.subscription-calculator-custom-days {
+  box-sizing: border-box;
+  width: min(100%, 8ch);
+  min-width: 0 !important;
+  max-width: 100%;
+  flex: 0 1 auto;
+  padding-inline: 8px;
+  field-sizing: content;
+  font-size: var(--font-ui-small);
+}
+
+.subscription-calculator-money-input:focus,
+.subscription-calculator-money-input:focus-visible,
+.subscription-calculator-select:focus,
+.subscription-calculator-select:focus-visible,
+.subscription-calculator-custom-days:focus,
+.subscription-calculator-custom-days:focus-visible {
+  border: 1px solid var(--background-modifier-border) !important;
+  box-shadow: none !important;
+}
+
+.subscription-calculator-card-actions {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: max-content;
+}
+
+.subscription-calculator-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+}
+
+.subscription-calculator-disabled-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.subscription-calculator-toggle {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+  align-items: center;
+}
+
+.subscription-calculator-toggle input {
+  position: absolute;
+  opacity: 0;
+}
+
+.subscription-calculator-toggle-track {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  transition: background 120ms ease;
+}
+
+.subscription-calculator-toggle-track::after {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 3px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  content: "";
+  transition: transform 120ms ease;
+}
+
+.subscription-calculator-toggle input:checked + .subscription-calculator-toggle-track {
+  background: var(--interactive-accent);
+}
+
+.subscription-calculator-toggle input:checked + .subscription-calculator-toggle-track::after {
+  transform: translateX(18px);
+}
+
+.subscription-calculator-add-card {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--subscription-card-radius);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.subscription-calculator-add-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.subscription-calculator-table {
+  display: grid;
+  gap: 6px;
+}
+
+.subscription-calculator-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.subscription-calculator-table-row.is-header {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+}
+
+.subscription-calculator-table-money {
+  font-variant-numeric: tabular-nums;
+}
+
+.subscription-calculator-table-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.subscription-calculator-modal input {
+  width: 100%;
+}
+
+@container (min-width: 620px) {
+  .subscription-calculator-card {
+    grid-template-columns: minmax(120px, 1fr) minmax(306px, 392px) auto;
+    align-items: center;
+  }
+
+  .subscription-calculator-card-top {
+    grid-column: auto;
+    justify-content: flex-start;
+  }
+
+  .subscription-calculator-card-controls {
+    grid-column: auto;
+  }
+
+  .subscription-calculator-card-actions {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .subscription-calculator-disabled-note {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 520px) {
+  .subscription-calculator-money-input,
+  .subscription-calculator-select,
+  .subscription-calculator-custom-days {
+    min-height: 32px;
+    font-size: var(--font-ui-smaller);
+  }
+}

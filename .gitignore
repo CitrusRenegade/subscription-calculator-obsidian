@@ -1,0 +1,4 @@
+node_modules/
+*.map
+.hotreload
+PROJECT_PLAN.md

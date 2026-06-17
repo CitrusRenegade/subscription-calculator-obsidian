@@ -1,0 +1,122 @@
+import { App, Modal, Notice, Setting } from "obsidian";
+import type { SubscriptionStore } from "../data/SubscriptionStore";
+import type { CurrencyRegistry } from "../money/CurrencyRegistry";
+import type { BillingPeriod } from "../types";
+
+export class AddSubscriptionModal extends Modal {
+  private name = "";
+  private price = "";
+  private currencyCode: string;
+  private billingPeriod: BillingPeriod = "monthly";
+  private customDays = 30;
+  private serviceUrl = "";
+  private cancelUrl = "";
+
+  constructor(
+    app: App,
+    private readonly store: SubscriptionStore,
+    private readonly registry: CurrencyRegistry,
+    defaultCurrency: string
+  ) {
+    super(app);
+    this.currencyCode = defaultCurrency;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("subscription-calculator-modal");
+    contentEl.createEl("h2", { text: "Add subscription" });
+
+    new Setting(contentEl).setName("Name").addText((text) =>
+      text.setPlaceholder("ChatGPT").onChange((value) => {
+        this.name = value;
+      })
+    );
+
+    new Setting(contentEl).setName("Price").addText((text) =>
+      text.setPlaceholder("20").onChange((value) => {
+        this.price = value;
+      })
+    );
+
+    new Setting(contentEl).setName("Currency").addDropdown((dropdown) => {
+      for (const currency of this.registry.list()) {
+        dropdown.addOption(currency.code, `${currency.code} ${currency.symbol}`);
+      }
+      dropdown.setValue(this.currencyCode);
+      dropdown.onChange((value) => {
+        this.currencyCode = value;
+      });
+    });
+
+    new Setting(contentEl).setName("Billing period").addDropdown((dropdown) => {
+      dropdown
+        .addOption("weekly", "weekly")
+        .addOption("monthly", "monthly")
+        .addOption("quarterly", "quarterly")
+        .addOption("yearly", "yearly")
+        .addOption("custom", "custom")
+        .setValue(this.billingPeriod)
+        .onChange((value) => {
+          this.billingPeriod = value as BillingPeriod;
+          this.onOpen();
+        });
+    });
+
+    if (this.billingPeriod === "custom") {
+      new Setting(contentEl).setName("Custom period days").addText((text) =>
+        text
+          .setPlaceholder("30")
+          .setValue(String(this.customDays))
+          .onChange((value) => {
+            this.customDays = Number(value);
+          })
+      );
+    }
+
+    new Setting(contentEl)
+      .setName("Service URL")
+      .setDesc("Used for favicon lookup. Optional.")
+      .addText((text) =>
+        text.setPlaceholder("https://example.com").onChange((value) => {
+          this.serviceUrl = value;
+        })
+      );
+
+    new Setting(contentEl)
+      .setName("Cancel URL")
+      .setDesc("Optional.")
+      .addText((text) =>
+        text.setPlaceholder("https://example.com/account").onChange((value) => {
+          this.cancelUrl = value;
+        })
+      );
+
+    new Setting(contentEl).addButton((button) =>
+      button
+        .setButtonText("Add")
+        .setCta()
+        .onClick(() => void this.submit())
+    );
+  }
+
+  private async submit(): Promise<void> {
+    try {
+      await this.store.addSubscription({
+        name: this.name,
+        priceText: this.price,
+        currencyCode: this.currencyCode,
+        billingPeriod: this.billingPeriod,
+        customBillingPeriodDays:
+          this.billingPeriod === "custom" ? this.customDays : undefined,
+        serviceUrl: this.serviceUrl,
+        cancelUrl: this.cancelUrl,
+      });
+      this.close();
+    } catch (e) {
+      new Notice(e instanceof Error ? e.message : "Failed to add subscription");
+    }
+  }
+}
+
