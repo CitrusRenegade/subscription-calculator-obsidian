@@ -749,7 +749,7 @@ var AddSubscriptionModal = class extends import_obsidian4.Modal {
       });
     });
     new import_obsidian4.Setting(contentEl).setName("Billing period").addDropdown((dropdown) => {
-      dropdown.addOption("weekly", "weekly").addOption("monthly", "monthly").addOption("quarterly", "quarterly").addOption("yearly", "yearly").addOption("custom", "custom").setValue(this.billingPeriod).onChange((value) => {
+      dropdown.addOption("weekly", "Weekly").addOption("monthly", "Monthly").addOption("quarterly", "Quarterly").addOption("yearly", "Yearly").addOption("custom", "Custom").setValue(this.billingPeriod).onChange((value) => {
         this.billingPeriod = value;
         this.onOpen();
       });
@@ -798,6 +798,14 @@ var import_obsidian9 = require("obsidian");
 
 // src/ui/ConfirmDeleteModal.ts
 var import_obsidian5 = require("obsidian");
+function applyDestructiveButtonStyle(button) {
+  var _a;
+  if (button.setDestructive) {
+    button.setDestructive();
+    return;
+  }
+  (_a = button.setWarning) == null ? void 0 : _a.call(button);
+}
 var ConfirmDeleteModal = class extends import_obsidian5.Modal {
   constructor(app, subscriptionName, onConfirm) {
     super(app);
@@ -815,7 +823,7 @@ var ConfirmDeleteModal = class extends import_obsidian5.Modal {
     new import_obsidian5.Setting(contentEl).addButton(
       (button) => button.setButtonText("Cancel").onClick(() => this.close())
     ).addButton(
-      (button) => button.setButtonText("Delete").setWarning().onClick(() => {
+      (button) => button.setButtonText("Delete").then(applyDestructiveButtonStyle).onClick(() => {
         this.onConfirm();
         this.close();
       })

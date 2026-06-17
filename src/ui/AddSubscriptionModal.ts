@@ -52,11 +52,11 @@ export class AddSubscriptionModal extends Modal {
 
     new Setting(contentEl).setName("Billing period").addDropdown((dropdown) => {
       dropdown
-        .addOption("weekly", "weekly")
-        .addOption("monthly", "monthly")
-        .addOption("quarterly", "quarterly")
-        .addOption("yearly", "yearly")
-        .addOption("custom", "custom")
+        .addOption("weekly", "Weekly")
+        .addOption("monthly", "Monthly")
+        .addOption("quarterly", "Quarterly")
+        .addOption("yearly", "Yearly")
+        .addOption("custom", "Custom")
         .setValue(this.billingPeriod)
         .onChange((value) => {
           this.billingPeriod = value as BillingPeriod;
@@ -119,4 +119,3 @@ export class AddSubscriptionModal extends Modal {
     }
   }
 }
-

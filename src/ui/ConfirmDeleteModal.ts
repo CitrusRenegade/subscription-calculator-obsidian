@@ -1,5 +1,18 @@
 import { App, Modal, Setting } from "obsidian";
 
+interface CompatibleDestructiveButton {
+  setDestructive?: () => unknown;
+  setWarning?: () => unknown;
+}
+
+function applyDestructiveButtonStyle(button: CompatibleDestructiveButton): void {
+  if (button.setDestructive) {
+    button.setDestructive();
+    return;
+  }
+  button.setWarning?.();
+}
+
 export class ConfirmDeleteModal extends Modal {
   constructor(
     app: App,
@@ -24,7 +37,7 @@ export class ConfirmDeleteModal extends Modal {
       .addButton((button) =>
         button
           .setButtonText("Delete")
-          .setWarning()
+          .then(applyDestructiveButtonStyle)
           .onClick(() => {
             this.onConfirm();
             this.close();
@@ -32,4 +45,3 @@ export class ConfirmDeleteModal extends Modal {
       );
   }
 }
-
