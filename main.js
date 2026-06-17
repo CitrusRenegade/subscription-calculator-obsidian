@@ -1038,14 +1038,14 @@ function renderSubscriptionIcon(container, item, iconService) {
 function stretchPeriodSelectWhenWrapped(controls, periodSelect) {
   let resizeObserver = null;
   const sync = () => {
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       if (!controls.isConnected) {
         resizeObserver == null ? void 0 : resizeObserver.disconnect();
         resizeObserver = null;
         return;
       }
       const firstControl = controls.firstElementChild;
-      const controlsBeforePeriod = Array.from(controls.children).slice(0, Array.from(controls.children).indexOf(periodSelect)).filter((element) => element instanceof HTMLElement);
+      const controlsBeforePeriod = Array.from(controls.children).slice(0, Array.from(controls.children).indexOf(periodSelect)).filter((element) => element.instanceOf(HTMLElement));
       periodSelect.classList.remove("is-row-fill");
       periodSelect.style.removeProperty("--subscription-period-row-width");
       const shouldFillRow = Boolean(firstControl && periodSelect.offsetTop > firstControl.offsetTop);
@@ -1342,7 +1342,6 @@ var SubscriptionCalculatorPlugin = class extends import_obsidian10.Plugin {
   }
   onunload() {
     void this.store.flushDisableGracePeriods().catch((e) => console.error("Failed to save delayed subscription changes:", e));
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_SUBSCRIPTIONS);
   }
   async savePluginData() {
     await this.saveData(this.data);
@@ -1359,7 +1358,7 @@ var SubscriptionCalculatorPlugin = class extends import_obsidian10.Plugin {
   async openSubscriptions() {
     const existingLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBSCRIPTIONS)[0];
     if (existingLeaf) {
-      this.app.workspace.revealLeaf(existingLeaf);
+      this.app.workspace.setActiveLeaf(existingLeaf, { focus: true });
       return;
     }
     const leaf = this.getTargetLeaf();
@@ -1368,7 +1367,10 @@ var SubscriptionCalculatorPlugin = class extends import_obsidian10.Plugin {
       return;
     }
     await leaf.setViewState({ type: VIEW_TYPE_SUBSCRIPTIONS, active: true });
-    this.app.workspace.revealLeaf(leaf);
+    if (this.data.settings.openMode === "right-sidebar") {
+      this.app.workspace.rightSplit.expand();
+    }
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
   getTargetLeaf() {
     if (this.data.settings.openMode === "right-sidebar") {

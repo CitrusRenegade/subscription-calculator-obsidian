@@ -78,7 +78,6 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
     void this.store
       .flushDisableGracePeriods()
       .catch((e) => console.error("Failed to save delayed subscription changes:", e));
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_SUBSCRIPTIONS);
   }
 
   async savePluginData(): Promise<void> {
@@ -96,11 +95,9 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
   }
 
   async openSubscriptions(): Promise<void> {
-    const existingLeaf = this.app.workspace
-      .getLeavesOfType(VIEW_TYPE_SUBSCRIPTIONS)
-      [0];
+    const existingLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBSCRIPTIONS)[0];
     if (existingLeaf) {
-      this.app.workspace.revealLeaf(existingLeaf);
+      this.app.workspace.setActiveLeaf(existingLeaf, { focus: true });
       return;
     }
 
@@ -110,7 +107,10 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
       return;
     }
     await leaf.setViewState({ type: VIEW_TYPE_SUBSCRIPTIONS, active: true });
-    this.app.workspace.revealLeaf(leaf);
+    if (this.data.settings.openMode === "right-sidebar") {
+      this.app.workspace.rightSplit.expand();
+    }
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
 
   private getTargetLeaf(): WorkspaceLeaf | null {

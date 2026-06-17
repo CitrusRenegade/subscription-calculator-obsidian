@@ -38,7 +38,7 @@ function stretchPeriodSelectWhenWrapped(
 ): void {
   let resizeObserver: ResizeObserver | null = null;
   const sync = () => {
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       if (!controls.isConnected) {
         resizeObserver?.disconnect();
         resizeObserver = null;
@@ -48,7 +48,7 @@ function stretchPeriodSelectWhenWrapped(
       const firstControl = controls.firstElementChild as HTMLElement | null;
       const controlsBeforePeriod = Array.from(controls.children)
         .slice(0, Array.from(controls.children).indexOf(periodSelect))
-        .filter((element): element is HTMLElement => element instanceof HTMLElement);
+        .filter((element): element is HTMLElement => element.instanceOf(HTMLElement));
       periodSelect.classList.remove("is-row-fill");
       periodSelect.style.removeProperty("--subscription-period-row-width");
 
