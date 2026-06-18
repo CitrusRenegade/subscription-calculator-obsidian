@@ -10,7 +10,9 @@
   },
   "scripts": {
     "dev": "node esbuild.config.mjs",
+    "dev:reload": "node esbuild.config.mjs --watch-reload",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "build:reload": "npm run build && node esbuild.config.mjs --reload-only",
     "test": "tsc --noEmit --skipLibCheck --project tsconfig.test.json && vitest run",
     "lint:obsidian": "eslint src/ tests/",
     "check": "npm test && npm run build && npm run lint:obsidian",

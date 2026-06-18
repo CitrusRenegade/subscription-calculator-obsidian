@@ -23,13 +23,14 @@ export function renderSummaryHeader(
     }
   }
 
-  const monthlyLabel = header.createDiv({
+  const monthlyRow = header.createDiv({ cls: "subscription-calculator-summary-monthly-row" });
+  const monthlyLabel = monthlyRow.createDiv({
     cls: "subscription-calculator-summary-subtitle",
     text: "Average per month",
   });
   monthlyLabel.classList.toggle("is-empty", totals.length === 0);
 
-  const monthly = header.createDiv({ cls: "subscription-calculator-summary-monthly" });
+  const monthly = monthlyRow.createDiv({ cls: "subscription-calculator-summary-monthly" });
   if (totals.length === 0) {
     monthly.createDiv({ text: formatMoney(moneyFromMinor(0, registry.getDefault().code), registry) });
   } else {

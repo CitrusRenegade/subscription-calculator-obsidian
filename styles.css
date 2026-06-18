@@ -28,10 +28,22 @@
   font-size: var(--font-ui-medium);
 }
 
+.subscription-calculator-summary-monthly-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
 .subscription-calculator-summary-monthly {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   color: var(--text-normal);
+}
+
+.subscription-calculator-summary-monthly > div {
+  white-space: nowrap;
 }
 
 .subscription-calculator-toolbar {

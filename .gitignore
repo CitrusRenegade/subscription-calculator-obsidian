@@ -1,4 +1,6 @@
 node_modules/
+main.js
 *.map
 .hotreload
+AGENTS.md
 PROJECT_PLAN.md
