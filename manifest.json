@@ -1,7 +1,7 @@
 {
   "id": "subscription-calculator",
   "name": "Subscription Calculator",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "minAppVersion": "1.5.0",
   "description": "Track enabled and disabled subscriptions, yearly totals, and cached favicons.",
   "author": "Subscription Calculator contributors",
