@@ -24,6 +24,12 @@ interface DisableGracePeriod {
   timeoutId: number;
 }
 
+export interface IconRefreshSummary {
+  refreshed: number;
+  failed: number;
+  skipped: number;
+}
+
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -305,6 +311,37 @@ export class SubscriptionStore {
       this.notify();
     }
     return refreshed;
+  }
+
+  async refreshAllIcons(): Promise<IconRefreshSummary> {
+    const summary: IconRefreshSummary = { refreshed: 0, failed: 0, skipped: 0 };
+    const today = todayLocalDate(this.clock);
+
+    for (const item of this.data.subscriptions) {
+      if (item.icon.mode !== "auto" || !item.serviceUrl) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      try {
+        const refreshed = await this.iconService.refreshAutoIcon(item);
+        if (!refreshed) {
+          summary.skipped += 1;
+          continue;
+        }
+        item.updatedOn = today;
+        summary.refreshed += 1;
+      } catch (e) {
+        console.warn(`Failed to refresh subscription icon for ${item.name}:`, e);
+        summary.failed += 1;
+      }
+    }
+
+    if (summary.refreshed > 0) {
+      await this.saveData();
+      this.notify();
+    }
+    return summary;
   }
 
   async clearIcon(id: string): Promise<void> {

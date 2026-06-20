@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, type ButtonComponent } from "obsidian";
 import type SubscriptionCalculatorPlugin from "../main";
 import type { FaviconProvider, OpenMode } from "../types";
 
@@ -10,6 +10,8 @@ export class SubscriptionSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+
+    let refreshAllButton: ButtonComponent | null = null;
 
     new Setting(containerEl)
       .setName("Open subscriptions in")
@@ -47,8 +49,35 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.data.settings.faviconProvider = value as FaviconProvider;
             await this.plugin.savePluginData();
+            refreshAllButton?.setDisabled(value === "none");
           })
       );
+
+    new Setting(containerEl)
+      .setName("Refresh all icons")
+      .setDesc("Refetches and caches icons for subscriptions using auto favicon and a service URL.")
+      .addButton((button) => {
+        refreshAllButton = button;
+        button
+          .setButtonText("Refresh all")
+          .setDisabled(this.plugin.data.settings.faviconProvider === "none")
+          .onClick(async () => {
+            button.setDisabled(true).setButtonText("Refreshing…");
+            try {
+              const result = await this.plugin.store.refreshAllIcons();
+              new Notice(
+                `Icons: ${result.refreshed} refreshed, ${result.failed} failed, ${result.skipped} skipped`
+              );
+            } catch (e) {
+              console.error("Failed to refresh all subscription icons:", e);
+              new Notice("Failed to refresh all icons");
+            } finally {
+              button
+                .setButtonText("Refresh all")
+                .setDisabled(this.plugin.data.settings.faviconProvider === "none");
+            }
+          });
+      });
 
     new Setting(containerEl)
       .setName("Confirm before delete")
