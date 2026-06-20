@@ -1,5 +1,6 @@
 import { Notice, setIcon } from "obsidian";
 import type { SubscriptionStore } from "../../data/SubscriptionStore";
+import { getCurrencyIconName } from "../../icons/currencyIcon";
 import type { IconService } from "../../icons/IconService";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
 import type { SubscriptionItem, SubscriptionViewItem } from "../../types";
@@ -29,7 +30,7 @@ export function renderSubscriptionIcon(
     icon.createEl("img", { attr: { src: cached.dataUrl, alt: "" } });
     return;
   }
-  icon.setText(item.name.slice(0, 1).toUpperCase() || "?");
+  setIcon(icon, getCurrencyIconName(item.price.currencyCode));
 }
 
 function stretchPeriodSelectWhenWrapped(

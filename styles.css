@@ -48,7 +48,8 @@
 
 .subscription-calculator-toolbar {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
@@ -57,6 +58,23 @@
   border-radius: 6px;
   background: var(--background-secondary);
   color: var(--text-normal);
+}
+
+.subscription-calculator-sort-button,
+.subscription-calculator-sort-menu-title,
+.subscription-calculator-sort-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.subscription-calculator-sort-button,
+.subscription-calculator-sort-menu-title {
+  gap: 6px;
+}
+
+.subscription-calculator-sort-icon {
+  --icon-size: var(--icon-s);
+  flex: 0 0 auto;
 }
 
 .subscription-calculator-cards {
