@@ -79,7 +79,7 @@
 
 .subscription-calculator-cards {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 18px;
   container-type: inline-size;
 }
@@ -95,7 +95,7 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--subscription-card-radius);
   background: var(--background-primary);
-  padding: 6px 4px;
+  padding: 4px;
 }
 
 .subscription-calculator-card.is-disabled {
@@ -194,6 +194,7 @@
   min-width: 0 !important;
   max-width: 100%;
   flex: 0 1 auto;
+  height: 32px;
   padding-inline: 8px;
   field-sizing: content;
   font-size: var(--font-ui-small);
@@ -212,6 +213,7 @@
   min-width: 0 !important;
   max-width: 100%;
   flex: 0 1 auto;
+  height: 32px;
   padding-inline: 8px 22px;
   field-sizing: content;
   font-size: var(--font-ui-small);
@@ -228,6 +230,7 @@
   min-width: 0 !important;
   max-width: 100%;
   flex: 0 1 auto;
+  height: 32px;
   padding-inline: 8px;
   field-sizing: content;
   font-size: var(--font-ui-small);
@@ -328,7 +331,7 @@
 .subscription-calculator-add-card {
   display: flex;
   width: 100%;
-  min-height: 48px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 8px;
