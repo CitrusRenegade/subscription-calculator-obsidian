@@ -1,6 +1,6 @@
 {
   "name": "subscription-calculator-obsidian",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Obsidian plugin for local subscription tracking.",
   "private": true,
   "license": "MIT",
