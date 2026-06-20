@@ -2,5 +2,6 @@ node_modules/
 main.js
 *.map
 .hotreload
+.agents/
 AGENTS.md
 PROJECT_PLAN.md
