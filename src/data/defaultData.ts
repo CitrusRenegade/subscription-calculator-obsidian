@@ -7,6 +7,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   showDisabled: false,
   faviconProvider: "google-s2",
   confirmBeforeDelete: true,
+  sortMode: "alphabetical",
+  sortDirection: "ascending",
 };
 
 export function createDefaultData(): PluginData {
@@ -17,4 +19,3 @@ export function createDefaultData(): PluginData {
     iconCache: {},
   };
 }
-

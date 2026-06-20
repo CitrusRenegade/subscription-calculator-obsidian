@@ -19,6 +19,7 @@ function subscription(
     name,
     status: "enabled",
     price: { amountMinor, currencyCode },
+    startDate: "2026-06-16",
     billingPeriod,
     customBillingPeriodDays,
     icon: { mode: "none" },

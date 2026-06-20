@@ -13,7 +13,7 @@ import type { IconService } from "../icons/IconService";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
 import type { Clock } from "../date/Clock";
 import { systemClock } from "../date/Clock";
-import { todayLocalDate } from "../date/dateOnly";
+import { parseDateOnly, todayLocalDate } from "../date/dateOnly";
 import { normalizeUrlInput } from "../icons/url";
 import { moneyToInputValue } from "../money/formatMoney";
 import { parseMoneyInput } from "../money/parseMoneyInput";
@@ -131,6 +131,8 @@ export class SubscriptionStore {
     if (!isBillingPeriod(input.billingPeriod)) {
       throw new Error("Select a valid billing period.");
     }
+    const startDate = parseDateOnly(input.startDate);
+    if (!startDate) throw new Error("Select a valid start date.");
     if (
       input.billingPeriod === "custom" &&
       (!input.customBillingPeriodDays || input.customBillingPeriodDays <= 0)
@@ -144,6 +146,7 @@ export class SubscriptionStore {
       name,
       status: "enabled",
       price: money,
+      startDate,
       billingPeriod: input.billingPeriod,
       customBillingPeriodDays:
         input.billingPeriod === "custom" ? input.customBillingPeriodDays : undefined,
@@ -193,6 +196,12 @@ export class SubscriptionStore {
         throw new Error("Select a valid billing period.");
       }
       item.billingPeriod = patch.billingPeriod;
+    }
+
+    if (patch.startDate !== undefined) {
+      const startDate = parseDateOnly(patch.startDate);
+      if (!startDate) throw new Error("Select a valid start date.");
+      item.startDate = startDate;
     }
 
     if (patch.customBillingPeriodDays !== undefined) {

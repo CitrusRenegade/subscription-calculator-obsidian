@@ -1,5 +1,6 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
+import { todayLocalDate } from "../date/dateOnly";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
 import type { BillingPeriod } from "../types";
 
@@ -7,6 +8,7 @@ export class AddSubscriptionModal extends Modal {
   private name = "";
   private price = "";
   private currencyCode: string;
+  private startDate = todayLocalDate();
   private billingPeriod: BillingPeriod = "monthly";
   private customDays = 30;
   private serviceUrl = "";
@@ -64,6 +66,13 @@ export class AddSubscriptionModal extends Modal {
         });
     });
 
+    new Setting(contentEl).setName("Start date").addText((text) => {
+      text.inputEl.type = "date";
+      text.setValue(this.startDate).onChange((value) => {
+        this.startDate = value;
+      });
+    });
+
     if (this.billingPeriod === "custom") {
       new Setting(contentEl).setName("Custom period days").addText((text) =>
         text
@@ -107,6 +116,7 @@ export class AddSubscriptionModal extends Modal {
         name: this.name,
         priceText: this.price,
         currencyCode: this.currencyCode,
+        startDate: this.startDate,
         billingPeriod: this.billingPeriod,
         customBillingPeriodDays:
           this.billingPeriod === "custom" ? this.customDays : undefined,

@@ -4,6 +4,8 @@ export type SubscriptionStatus = "enabled" | "disabled";
 export type BillingPeriod = "weekly" | "monthly" | "quarterly" | "yearly" | "custom";
 export type DateOnly = string;
 export type IconMode = "auto" | "manual-url" | "emoji" | "none";
+export type SubscriptionSortMode = "alphabetical" | "status" | "next-payment";
+export type SubscriptionSortDirection = "ascending" | "descending";
 
 export interface PluginSettings {
   openMode: OpenMode;
@@ -11,6 +13,8 @@ export interface PluginSettings {
   showDisabled: boolean;
   faviconProvider: FaviconProvider;
   confirmBeforeDelete: boolean;
+  sortMode: SubscriptionSortMode;
+  sortDirection: SubscriptionSortDirection;
 }
 
 export interface Money {
@@ -42,6 +46,7 @@ export interface SubscriptionItem {
   status: SubscriptionStatus;
   price: Money;
   billingPeriod: BillingPeriod;
+  startDate: DateOnly;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
   cancelUrl?: string;
@@ -77,6 +82,7 @@ export interface AddSubscriptionInput {
   priceText: string;
   currencyCode: string;
   billingPeriod: BillingPeriod;
+  startDate: DateOnly;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
   cancelUrl?: string;
@@ -88,6 +94,7 @@ export interface UpdateSubscriptionInput {
   priceText?: string;
   currencyCode?: string;
   billingPeriod?: BillingPeriod;
+  startDate?: DateOnly;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
   cancelUrl?: string;

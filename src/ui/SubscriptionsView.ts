@@ -1,9 +1,15 @@
 import { ItemView, Menu, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import { VIEW_TYPE_SUBSCRIPTIONS } from "../constants";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
+import { todayLocalDate } from "../date/dateOnly";
 import type { IconService } from "../icons/IconService";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
-import type { PluginSettings, SubscriptionViewItem } from "../types";
+import type {
+  PluginSettings,
+  SubscriptionSortDirection,
+  SubscriptionSortMode,
+  SubscriptionViewItem,
+} from "../types";
 import { AddSubscriptionModal } from "./AddSubscriptionModal";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { EditSubscriptionModal } from "./EditSubscriptionModal";
@@ -11,16 +17,12 @@ import { renderAddSubscriptionCard } from "./components/AddSubscriptionCard";
 import { renderSubscriptionCard } from "./components/SubscriptionCard";
 import { renderSubscriptionSummaryTable } from "./components/SubscriptionSummaryTable";
 import { renderSummaryHeader } from "./components/SummaryHeader";
-import {
-  sortSubscriptions,
-  type SubscriptionSortDirection,
-  type SubscriptionSortMode,
-} from "./subscriptionSort";
+import { sortSubscriptions } from "./subscriptionSort";
 
 export class SubscriptionsView extends ItemView {
   private unsubscribe: (() => void) | null = null;
-  private sortMode: SubscriptionSortMode = "alphabetical";
-  private sortDirection: SubscriptionSortDirection = "ascending";
+  private sortMode: SubscriptionSortMode;
+  private sortDirection: SubscriptionSortDirection;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -30,6 +32,9 @@ export class SubscriptionsView extends ItemView {
     private readonly getSettings: () => PluginSettings
   ) {
     super(leaf);
+    const settings = this.getSettings();
+    this.sortMode = settings.sortMode;
+    this.sortDirection = settings.sortDirection;
   }
 
   getViewType(): string {
@@ -98,6 +103,11 @@ export class SubscriptionsView extends ItemView {
           )
           .onClick(() => this.selectSortMode("status"));
       });
+      menu.addItem((item) => {
+        item
+          .setTitle(this.getSortMenuTitle("next-payment", "Next payment"))
+          .onClick(() => this.selectSortMode("next-payment"));
+      });
       menu.showAtMouseEvent(event);
     });
 
@@ -105,7 +115,8 @@ export class SubscriptionsView extends ItemView {
     for (const item of sortSubscriptions(
       this.store.getVisibleSubscriptions(),
       this.sortMode,
-      this.sortDirection
+      this.sortDirection,
+      todayLocalDate()
     )) {
       renderSubscriptionCard(
         cards,
@@ -143,7 +154,12 @@ export class SubscriptionsView extends ItemView {
       this.sortMode = mode;
       this.sortDirection = "ascending";
     }
-    this.render();
+    const settings = this.getSettings();
+    settings.sortMode = this.sortMode;
+    settings.sortDirection = this.sortDirection;
+    void this.store
+      .saveSettings()
+      .catch(() => new Notice("Failed to save sorting preference"));
   }
 
   private getSortDirectionIcon(): "arrow-up" | "arrow-down" {
@@ -151,7 +167,9 @@ export class SubscriptionsView extends ItemView {
   }
 
   private getSortLabel(mode: SubscriptionSortMode): string {
-    return mode === "alphabetical" ? "Alphabetical" : "Enabled / disabled";
+    if (mode === "alphabetical") return "Alphabetical";
+    if (mode === "status") return "Enabled / disabled";
+    return "Next payment";
   }
 
   private getSortMenuTitle(

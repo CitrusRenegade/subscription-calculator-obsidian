@@ -4,7 +4,8 @@ import { sortSubscriptions } from "../src/ui/subscriptionSort";
 
 function item(
   name: string,
-  effectiveStatus: "enabled" | "disabled"
+  effectiveStatus: "enabled" | "disabled",
+  startDate = "2026-06-20"
 ): SubscriptionViewItem {
   return {
     id: name,
@@ -13,6 +14,7 @@ function item(
     effectiveStatus,
     inDisableGracePeriod: false,
     price: { amountMinor: 100, currencyCode: "USD" },
+    startDate,
     billingPeriod: "monthly",
     icon: { mode: "none" },
     createdOn: "2026-06-20",
@@ -79,5 +81,35 @@ describe("sortSubscriptions", () => {
       "Zoom",
       "Figma",
     ]);
+  });
+
+  it("sorts enabled cards by next payment and keeps disabled cards last", () => {
+    const result = sortSubscriptions(
+      [
+        item("Later", "enabled", "2026-06-25"),
+        item("Disabled", "disabled", "2026-06-21"),
+        item("Sooner", "enabled", "2026-06-21"),
+      ],
+      "next-payment",
+      "ascending",
+      "2026-06-20"
+    );
+
+    expect(result.map(({ name }) => name)).toEqual(["Sooner", "Later", "Disabled"]);
+  });
+
+  it("reverses next-payment dates without moving disabled cards above enabled ones", () => {
+    const result = sortSubscriptions(
+      [
+        item("Sooner", "enabled", "2026-06-21"),
+        item("Disabled", "disabled", "2026-07-01"),
+        item("Later", "enabled", "2026-06-25"),
+      ],
+      "next-payment",
+      "descending",
+      "2026-06-20"
+    );
+
+    expect(result.map(({ name }) => name)).toEqual(["Later", "Sooner", "Disabled"]);
   });
 });

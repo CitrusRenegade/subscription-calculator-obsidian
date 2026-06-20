@@ -85,9 +85,12 @@
 }
 
 .subscription-calculator-card {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
   min-width: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--subscription-card-radius);
@@ -113,6 +116,7 @@
 
 .subscription-calculator-card-top {
   grid-column: 1;
+  grid-row: 1;
   justify-content: flex-start;
   min-width: 0;
 }
@@ -123,6 +127,19 @@
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+.subscription-calculator-next-payment {
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  justify-self: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.15;
+  opacity: 0.75;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .subscription-calculator-card-name,
@@ -156,6 +173,7 @@
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
+  grid-row: 2;
   gap: 6px;
   justify-content: center;
   min-width: 0;
@@ -232,6 +250,7 @@
   align-items: center;
   gap: 8px;
   justify-content: flex-end;
+  justify-self: end;
   min-width: max-content;
 }
 
@@ -244,8 +263,24 @@
 }
 
 .subscription-calculator-disabled-note {
+  grid-column: 1 / -1;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.subscription-calculator-card.is-next-payment-wrapped
+  .subscription-calculator-next-payment {
+  position: static;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  transform: none;
+}
+
+.subscription-calculator-card.is-next-payment-wrapped
+  .subscription-calculator-card-controls {
+  grid-row: 3;
 }
 
 .subscription-calculator-toggle {
@@ -341,31 +376,6 @@
 
 .subscription-calculator-modal input {
   width: 100%;
-}
-
-@container (min-width: 620px) {
-  .subscription-calculator-card {
-    grid-template-columns: minmax(120px, 1fr) minmax(306px, 392px) auto;
-    align-items: center;
-  }
-
-  .subscription-calculator-card-top {
-    grid-column: auto;
-    justify-content: flex-start;
-  }
-
-  .subscription-calculator-card-controls {
-    grid-column: auto;
-  }
-
-  .subscription-calculator-card-actions {
-    grid-column: auto;
-    grid-row: auto;
-  }
-
-  .subscription-calculator-disabled-note {
-    grid-column: 1 / -1;
-  }
 }
 
 @container (max-width: 520px) {

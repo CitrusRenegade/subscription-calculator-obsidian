@@ -1,5 +1,11 @@
 import { Notice, setIcon } from "obsidian";
 import type { SubscriptionStore } from "../../data/SubscriptionStore";
+import { todayLocalDate } from "../../date/dateOnly";
+import {
+  formatPaymentCountdown,
+  getDaysUntil,
+  getNextPaymentDate,
+} from "../../date/paymentSchedule";
 import { getCurrencyIconName } from "../../icons/currencyIcon";
 import type { IconService } from "../../icons/IconService";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
@@ -83,6 +89,48 @@ function stretchPeriodSelectWhenWrapped(
   sync();
 }
 
+function wrapNextPaymentOnCollision(
+  card: HTMLElement,
+  name: HTMLElement,
+  actions: HTMLElement,
+  nextPayment: HTMLElement
+): void {
+  let resizeObserver: ResizeObserver | null = null;
+  const sync = () => {
+    window.requestAnimationFrame(() => {
+      if (!card.isConnected) {
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        return;
+      }
+
+      const nameRect = name.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      const availableWidth = actionsRect.left - nameRect.right;
+      const shouldWrap = nextPayment.scrollWidth > availableWidth;
+
+      card.classList.toggle("is-next-payment-wrapped", shouldWrap);
+      if (shouldWrap) {
+        nextPayment.style.removeProperty("left");
+        nextPayment.style.removeProperty("top");
+        return;
+      }
+
+      const cardRect = card.getBoundingClientRect();
+      nextPayment.style.left = `${(nameRect.right + actionsRect.left) / 2 - cardRect.left}px`;
+      nextPayment.style.top = `${
+        (actionsRect.top + actionsRect.bottom) / 2 - cardRect.top
+      }px`;
+    });
+  };
+
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(card);
+  }
+  sync();
+}
+
 export function renderSubscriptionCard(
   container: HTMLElement,
   item: SubscriptionViewItem,
@@ -99,7 +147,27 @@ export function renderSubscriptionCard(
   const top = card.createDiv({ cls: "subscription-calculator-card-top" });
   const title = top.createDiv({ cls: "subscription-calculator-card-title" });
   renderSubscriptionIcon(title, item, iconService);
-  title.createSpan({ cls: "subscription-calculator-card-name", text: item.name });
+  const name = title.createSpan({
+    cls: "subscription-calculator-card-name",
+    text: item.name,
+  });
+  let nextPaymentLabel: HTMLElement | null = null;
+  if (item.effectiveStatus === "enabled") {
+    const today = todayLocalDate();
+    const nextPayment = getNextPaymentDate(
+      item.startDate,
+      item.billingPeriod,
+      today,
+      item.customBillingPeriodDays
+    );
+    if (nextPayment) {
+      nextPaymentLabel = card.createSpan({
+        cls: "subscription-calculator-next-payment",
+        text: formatPaymentCountdown(getDaysUntil(nextPayment, today)),
+        attr: { title: `Next payment: ${nextPayment}` },
+      });
+    }
+  }
 
   const actions = card.createDiv({ cls: "subscription-calculator-card-actions" });
   const edit = actions.createEl("button", {
@@ -121,6 +189,10 @@ export function renderSubscriptionCard(
     item.effectiveStatus === "enabled",
     (enabled) => void store.setSubscriptionEnabled(item.id, enabled)
   );
+
+  if (nextPaymentLabel) {
+    wrapNextPaymentOnCollision(card, name, actions, nextPaymentLabel);
+  }
 
   const controls = card.createDiv({ cls: "subscription-calculator-card-controls" });
   createMoneyInput(controls, item.price, registry, (priceText) => {

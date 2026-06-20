@@ -7,6 +7,8 @@ import type {
   PluginData,
   PluginSettings,
   SubscriptionItem,
+  SubscriptionSortDirection,
+  SubscriptionSortMode,
   SubscriptionStatus,
 } from "../types";
 import { parseDateOnly } from "../date/dateOnly";
@@ -38,6 +40,15 @@ function asFaviconProvider(value: unknown): FaviconProvider {
 
 function asStatus(value: unknown): SubscriptionStatus {
   return value === "disabled" ? "disabled" : "enabled";
+}
+
+function asSortMode(value: unknown): SubscriptionSortMode {
+  if (value === "status" || value === "next-payment") return value;
+  return "alphabetical";
+}
+
+function asSortDirection(value: unknown): SubscriptionSortDirection {
+  return value === "descending" ? "descending" : "ascending";
 }
 
 function asPeriod(value: unknown): BillingPeriod {
@@ -74,6 +85,8 @@ function migrateSettings(value: unknown): PluginSettings {
       raw.confirmBeforeDelete,
       DEFAULT_SETTINGS.confirmBeforeDelete
     ),
+    sortMode: asSortMode(raw.sortMode),
+    sortDirection: asSortDirection(raw.sortDirection),
   };
 }
 
@@ -101,6 +114,7 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
     name,
     status,
     price: { amountMinor, currencyCode },
+    startDate: parseDateOnly(value.startDate) ?? createdOn,
     billingPeriod: asPeriod(value.billingPeriod),
     customBillingPeriodDays:
       typeof value.customBillingPeriodDays === "number" &&

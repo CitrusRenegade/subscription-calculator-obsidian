@@ -7,6 +7,7 @@ export class EditSubscriptionModal extends Modal {
   private name: string;
   private serviceUrl: string;
   private cancelUrl: string;
+  private startDate: string;
   private iconMode: IconMode;
   private manualIconUrl: string;
   private emoji: string;
@@ -21,6 +22,7 @@ export class EditSubscriptionModal extends Modal {
     this.name = item.name;
     this.serviceUrl = item.serviceUrl ?? "";
     this.cancelUrl = item.cancelUrl ?? "";
+    this.startDate = item.startDate;
     this.iconMode = item.icon.mode;
     this.manualIconUrl = item.icon.manualUrl ?? "";
     this.emoji = item.icon.emoji ?? "";
@@ -49,6 +51,13 @@ export class EditSubscriptionModal extends Modal {
         this.cancelUrl = value;
       })
     );
+
+    new Setting(contentEl).setName("Start date").addText((text) => {
+      text.inputEl.type = "date";
+      text.setValue(this.startDate).onChange((value) => {
+        this.startDate = value;
+      });
+    });
 
     new Setting(contentEl).setName("Icon mode").addDropdown((dropdown) =>
       dropdown
@@ -100,6 +109,7 @@ export class EditSubscriptionModal extends Modal {
         name: this.name,
         serviceUrl: this.serviceUrl,
         cancelUrl: this.cancelUrl,
+        startDate: this.startDate,
         icon: {
           mode: this.iconMode,
           manualUrl: this.manualIconUrl,
