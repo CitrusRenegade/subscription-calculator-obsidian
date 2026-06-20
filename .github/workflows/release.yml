@@ -3,45 +3,87 @@ name: Release
 on:
   push:
     tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
+      - "*"
 
 permissions:
   contents: write
-  id-token: write
   attestations: write
+  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: 20
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Validate release metadata
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
 
-      - name: Test, build, and lint
-        run: npm run check
+          const tag = process.env.GITHUB_REF.replace(/^refs\/tags\//, "");
+          const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+          const versions = JSON.parse(fs.readFileSync("versions.json", "utf8"));
 
-      - name: Attest release assets
-        uses: actions/attest-build-provenance@v3
+          const parseVersion = (version) => {
+            if (!/^\d+\.\d+\.\d+$/.test(version)) {
+              throw new Error(`Expected numeric x.y.z version, got ${version}.`);
+            }
+            return version.split(".").map((part) => Number.parseInt(part, 10));
+          };
+
+          const compareVersions = (left, right) => {
+            const leftParts = parseVersion(left);
+            const rightParts = parseVersion(right);
+            for (let index = 0; index < leftParts.length; index += 1) {
+              if (leftParts[index] !== rightParts[index]) {
+                return leftParts[index] - rightParts[index];
+              }
+            }
+            return 0;
+          };
+
+          if (tag !== manifest.version) {
+            console.error(`Release tag ${tag} must match manifest.json version ${manifest.version}.`);
+            process.exit(1);
+          }
+
+          const matchingVersion = Object.entries(versions)
+            .filter(([pluginVersion]) => compareVersions(pluginVersion, manifest.version) <= 0)
+            .sort(([left], [right]) => compareVersions(right, left))[0];
+
+          if (!matchingVersion || matchingVersion[1] !== manifest.minAppVersion) {
+            console.error(
+              `versions.json must resolve manifest version ${manifest.version} to minAppVersion ${manifest.minAppVersion}.`
+            );
+            process.exit(1);
+          }
+          NODE
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
             main.js
             manifest.json
             styles.css
 
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          main.js manifest.json styles.css
-          --title "$GITHUB_REF_NAME"
-          --generate-notes
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          notes=$(git tag -l --format='%(contents)' "$tag")
+          gh release create "$tag" \
+            --title "$tag" \
+            --notes "$notes" \
+            main.js manifest.json styles.css
