@@ -154,7 +154,6 @@ export class SubscriptionStore {
       cancelUrl: normalizeUrlInput(input.cancelUrl),
       icon: {
         mode: input.icon?.mode ?? "auto",
-        manualUrl: normalizeUrlInput(input.icon?.manualUrl),
         emoji: input.icon?.emoji?.trim() || undefined,
       },
       createdOn: today,
@@ -226,7 +225,6 @@ export class SubscriptionStore {
       item.icon = {
         ...item.icon,
         ...patch.icon,
-        manualUrl: normalizeUrlInput(patch.icon.manualUrl),
         emoji: patch.icon.emoji?.trim() || undefined,
       };
       if (item.icon.mode !== "auto") {

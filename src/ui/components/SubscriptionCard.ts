@@ -27,10 +27,6 @@ export function renderSubscriptionIcon(
     icon.setText(item.icon.emoji);
     return;
   }
-  if (item.icon.mode === "manual-url" && item.icon.manualUrl) {
-    icon.createEl("img", { attr: { src: item.icon.manualUrl, alt: "" } });
-    return;
-  }
   const cached = iconService.getCachedIcon(item);
   if (item.icon.mode === "auto" && cached) {
     icon.createEl("img", { attr: { src: cached.dataUrl, alt: "" } });

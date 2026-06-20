@@ -9,7 +9,6 @@ export class EditSubscriptionModal extends Modal {
   private cancelUrl: string;
   private startDate: string;
   private iconMode: IconMode;
-  private manualIconUrl: string;
   private emoji: string;
 
   constructor(
@@ -24,7 +23,6 @@ export class EditSubscriptionModal extends Modal {
     this.cancelUrl = item.cancelUrl ?? "";
     this.startDate = item.startDate;
     this.iconMode = item.icon.mode;
-    this.manualIconUrl = item.icon.manualUrl ?? "";
     this.emoji = item.icon.emoji ?? "";
   }
 
@@ -62,7 +60,6 @@ export class EditSubscriptionModal extends Modal {
     new Setting(contentEl).setName("Icon mode").addDropdown((dropdown) =>
       dropdown
         .addOption("auto", "Auto favicon")
-        .addOption("manual-url", "Manual URL")
         .addOption("emoji", "Emoji")
         .addOption("none", "None")
         .setValue(this.iconMode)
@@ -71,14 +68,6 @@ export class EditSubscriptionModal extends Modal {
           this.onOpen();
         })
     );
-
-    if (this.iconMode === "manual-url") {
-      new Setting(contentEl).setName("Manual icon URL").addText((text) =>
-        text.setValue(this.manualIconUrl).onChange((value) => {
-          this.manualIconUrl = value;
-        })
-      );
-    }
 
     if (this.iconMode === "emoji") {
       new Setting(contentEl).setName("Emoji").addText((text) =>
@@ -112,7 +101,6 @@ export class EditSubscriptionModal extends Modal {
         startDate: this.startDate,
         icon: {
           mode: this.iconMode,
-          manualUrl: this.manualIconUrl,
           emoji: this.emoji,
         },
       });
@@ -134,4 +122,3 @@ export class EditSubscriptionModal extends Modal {
     this.close();
   }
 }
-

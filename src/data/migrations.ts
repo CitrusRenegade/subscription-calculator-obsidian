@@ -65,7 +65,7 @@ function asPeriod(value: unknown): BillingPeriod {
 }
 
 function asIconMode(value: unknown): IconMode {
-  if (value === "manual-url" || value === "emoji" || value === "none") return value;
+  if (value === "emoji" || value === "none") return value;
   return "auto";
 }
 
@@ -125,7 +125,6 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
     cancelUrl: asString(value.cancelUrl)?.trim() || undefined,
     icon: {
       mode: asIconMode(rawIcon.mode),
-      manualUrl: asString(rawIcon.manualUrl)?.trim() || undefined,
       emoji: asString(rawIcon.emoji)?.trim() || undefined,
       cacheKey: asString(rawIcon.cacheKey)?.trim() || undefined,
     },
@@ -180,4 +179,3 @@ export function migratePluginData(value: unknown): PluginData {
   data.iconCache = migrateIconCache(raw.iconCache);
   return data;
 }
-
