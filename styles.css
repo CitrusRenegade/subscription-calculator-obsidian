@@ -89,8 +89,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 8px;
-  row-gap: 4px;
+  gap: 4px 8px;
   min-width: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--subscription-card-radius);
@@ -181,7 +180,7 @@
   overflow: hidden;
 }
 
-.subscription-calculator-money-input {
+.subscription-calculator-view .subscription-calculator-money-input {
   box-sizing: border-box;
   width: min(
     100%,
@@ -191,7 +190,7 @@
       calc(var(--subscription-field-max-ch, 14) * 1ch + 2.2em)
     )
   );
-  min-width: 0 !important;
+  min-width: 0;
   max-width: 100%;
   flex: 0 1 auto;
   height: 32px;
@@ -200,7 +199,7 @@
   font-size: var(--font-ui-small);
 }
 
-.subscription-calculator-select {
+.subscription-calculator-view .subscription-calculator-select {
   box-sizing: border-box;
   width: min(
     100%,
@@ -210,7 +209,7 @@
       calc(var(--subscription-field-max-ch, 10) * 1ch + 2.8em)
     )
   );
-  min-width: 0 !important;
+  min-width: 0;
   max-width: 100%;
   flex: 0 1 auto;
   height: 32px;
@@ -224,10 +223,10 @@
   flex-basis: min(100%, var(--subscription-period-row-width, 100%));
 }
 
-.subscription-calculator-custom-days {
+.subscription-calculator-view .subscription-calculator-custom-days {
   box-sizing: border-box;
   width: min(100%, 8ch);
-  min-width: 0 !important;
+  min-width: 0;
   max-width: 100%;
   flex: 0 1 auto;
   height: 32px;
@@ -236,14 +235,14 @@
   font-size: var(--font-ui-small);
 }
 
-.subscription-calculator-money-input:focus,
-.subscription-calculator-money-input:focus-visible,
-.subscription-calculator-select:focus,
-.subscription-calculator-select:focus-visible,
-.subscription-calculator-custom-days:focus,
-.subscription-calculator-custom-days:focus-visible {
-  border: 1px solid var(--background-modifier-border) !important;
-  box-shadow: none !important;
+.subscription-calculator-view .subscription-calculator-money-input:focus,
+.subscription-calculator-view .subscription-calculator-money-input:focus-visible,
+.subscription-calculator-view .subscription-calculator-select:focus,
+.subscription-calculator-view .subscription-calculator-select:focus-visible,
+.subscription-calculator-view .subscription-calculator-custom-days:focus,
+.subscription-calculator-view .subscription-calculator-custom-days:focus-visible {
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
 }
 
 .subscription-calculator-card-actions {
