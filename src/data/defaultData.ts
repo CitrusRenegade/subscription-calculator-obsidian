@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   showDisabled: false,
   faviconProvider: "google-s2",
   confirmBeforeDelete: true,
+  moneyDisplayPrecision: 0,
   sortMode: "alphabetical",
   sortDirection: "ascending",
 };

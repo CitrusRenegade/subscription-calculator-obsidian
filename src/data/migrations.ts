@@ -7,6 +7,7 @@ import type {
   CachedIcon,
   FaviconProvider,
   IconMode,
+  MoneyDisplayPrecision,
   PluginData,
   PluginSettings,
   SubscriptionItem,
@@ -54,6 +55,10 @@ function asSortDirection(value: unknown): SubscriptionSortDirection {
   return value === "descending" ? "descending" : "ascending";
 }
 
+function asMoneyDisplayPrecision(value: unknown): MoneyDisplayPrecision {
+  return value === 1 ? 1 : DEFAULT_SETTINGS.moneyDisplayPrecision;
+}
+
 function asPeriod(value: unknown): BillingPeriod {
   if (
     value === "weekly" ||
@@ -88,6 +93,7 @@ function migrateSettings(value: unknown): PluginSettings {
       raw.confirmBeforeDelete,
       DEFAULT_SETTINGS.confirmBeforeDelete
     ),
+    moneyDisplayPrecision: asMoneyDisplayPrecision(raw.moneyDisplayPrecision),
     sortMode: asSortMode(raw.sortMode),
     sortDirection: asSortDirection(raw.sortDirection),
   };

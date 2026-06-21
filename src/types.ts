@@ -6,6 +6,7 @@ export type DateOnly = string;
 export type IconMode = "auto" | "emoji" | "none";
 export type SubscriptionSortMode = "alphabetical" | "status" | "next-payment";
 export type SubscriptionSortDirection = "ascending" | "descending";
+export type MoneyDisplayPrecision = 0 | 1;
 
 export interface PluginSettings {
   openMode: OpenMode;
@@ -13,6 +14,7 @@ export interface PluginSettings {
   showDisabled: boolean;
   faviconProvider: FaviconProvider;
   confirmBeforeDelete: boolean;
+  moneyDisplayPrecision: MoneyDisplayPrecision;
   sortMode: SubscriptionSortMode;
   sortDirection: SubscriptionSortDirection;
 }

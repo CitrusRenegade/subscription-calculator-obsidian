@@ -71,13 +71,20 @@ export class SubscriptionsView extends ItemView {
     container.addClass("subscription-calculator-view");
     this.containerEl.addClass("subscription-calculator-view-container");
 
+    const settings = this.getSettings();
+    const displayPrecision = settings.moneyDisplayPrecision;
     const totals = this.store.getTotalsByCurrency();
-    const summary = renderSummaryHeader(container, totals, this.registry);
+    const summary = renderSummaryHeader(
+      container,
+      totals,
+      this.registry,
+      displayPrecision
+    );
 
     const toolbar = container.createDiv({ cls: "subscription-calculator-toolbar" });
     const showDisabledButton = toolbar.createEl("button", {
       cls: "subscription-calculator-secondary-button",
-      text: this.getSettings().showDisabled ? "Hide disabled" : "Show disabled",
+      text: settings.showDisabled ? "Hide disabled" : "Show disabled",
     });
     showDisabledButton.addEventListener("click", () => {
       const settings = this.getSettings();
@@ -150,10 +157,16 @@ export class SubscriptionsView extends ItemView {
       container,
       this.store.getEnabledSubscriptions(),
       this.registry,
-      this.iconService
+      this.iconService,
+      displayPrecision
     );
 
-    this.floatingSummaryEl = renderFloatingSummary(this.containerEl, totals, this.registry);
+    this.floatingSummaryEl = renderFloatingSummary(
+      this.containerEl,
+      totals,
+      this.registry,
+      displayPrecision
+    );
     const viewWindow = container.ownerDocument.defaultView;
     if (viewWindow === null) return;
     const summaryValues = summary.querySelector<HTMLElement>(

@@ -39,6 +39,20 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     });
 
     new Setting(containerEl)
+      .setName("More precise totals")
+      .setDesc(
+        "Show totals to one decimal place instead of rounding to whole numbers (disabled by default)."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.data.settings.moneyDisplayPrecision === 1)
+          .onChange(async (value) => {
+            this.plugin.data.settings.moneyDisplayPrecision = value ? 1 : 0;
+            await this.plugin.store.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Favicon provider")
       .setDesc("Auto icons are cached in plugin data and are not fetched during normal render.")
       .addDropdown((dropdown) =>

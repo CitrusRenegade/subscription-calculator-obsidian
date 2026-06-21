@@ -1,13 +1,17 @@
 import type { CurrencyRegistry } from "./CurrencyRegistry";
-import type { Money } from "../types";
+import type { Money, MoneyDisplayPrecision } from "../types";
 
-export function formatMoney(money: Money, registry: CurrencyRegistry): string {
+export function formatMoney(
+  money: Money,
+  registry: CurrencyRegistry,
+  displayPrecision: MoneyDisplayPrecision = 0
+): string {
   const currency = registry.get(money.currencyCode) ?? registry.getDefault();
   const factor = 10 ** currency.scale;
   const amount = money.amountMinor / factor;
   const formatter = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: displayPrecision,
+    maximumFractionDigits: displayPrecision,
   });
   const formatted = formatter
     .formatToParts(amount)

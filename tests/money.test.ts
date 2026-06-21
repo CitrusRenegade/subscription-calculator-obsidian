@@ -48,6 +48,12 @@ describe("money helpers", () => {
     expect(formatMoney(moneyFromMinor(3878000, "USD"), registry)).toMatch(
       /^38\u00A0780 \$$/
     );
+    expect(formatMoney(moneyFromMinor(1994, "USD"), registry, 1)).toMatch(
+      /^19[.,]9 \$$/
+    );
+    expect(formatMoney(moneyFromMinor(2000, "USD"), registry, 1)).toMatch(
+      /^20[.,]0 \$$/
+    );
   });
 
   it("calculates yearly totals and orders currencies by subscription count", () => {

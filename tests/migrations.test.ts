@@ -3,6 +3,18 @@ import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
 import { migratePluginData } from "../src/data/migrations";
 
 describe("plugin data migrations", () => {
+  it("defaults display precision to whole numbers and preserves tenths", () => {
+    expect(migratePluginData({}).settings.moneyDisplayPrecision).toBe(0);
+    expect(
+      migratePluginData({ settings: { moneyDisplayPrecision: 1 } }).settings
+        .moneyDisplayPrecision
+    ).toBe(1);
+    expect(
+      migratePluginData({ settings: { moneyDisplayPrecision: 2 } }).settings
+        .moneyDisplayPrecision
+    ).toBe(0);
+  });
+
   it("repairs a custom billing period without a day count", () => {
     const data = migratePluginData({
       subscriptions: [

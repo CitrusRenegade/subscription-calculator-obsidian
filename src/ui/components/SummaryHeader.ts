@@ -1,29 +1,32 @@
 import { setIcon } from "obsidian";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
-import type { MoneyTotal } from "../../types";
+import type { MoneyDisplayPrecision, MoneyTotal } from "../../types";
 import { formatMoney } from "../../money/formatMoney";
 import { moneyFromMinor } from "../../money/totals";
 
 export function renderSummaryHeader(
   container: HTMLElement,
   totals: MoneyTotal[],
-  registry: CurrencyRegistry
+  registry: CurrencyRegistry,
+  displayPrecision: MoneyDisplayPrecision
 ): HTMLElement {
-  return renderSummary(container, totals, registry);
+  return renderSummary(container, totals, registry, displayPrecision);
 }
 
 export function renderFloatingSummary(
   container: HTMLElement,
   totals: MoneyTotal[],
-  registry: CurrencyRegistry
+  registry: CurrencyRegistry,
+  displayPrecision: MoneyDisplayPrecision
 ): HTMLElement {
-  return renderSummary(container, totals, registry, true);
+  return renderSummary(container, totals, registry, displayPrecision, true);
 }
 
 function renderSummary(
   container: HTMLElement,
   totals: MoneyTotal[],
   registry: CurrencyRegistry,
+  displayPrecision: MoneyDisplayPrecision,
   floating = false
 ): HTMLElement {
   const header = container.createDiv({
@@ -39,7 +42,13 @@ function renderSummary(
 
   const yearly = header.createDiv({ cls: "subscription-calculator-summary-values" });
   if (totals.length === 0) {
-    yearly.createSpan({ text: formatMoney(moneyFromMinor(0, registry.getDefault().code), registry) });
+    yearly.createSpan({
+      text: formatMoney(
+        moneyFromMinor(0, registry.getDefault().code),
+        registry,
+        displayPrecision
+      ),
+    });
   } else {
     for (const [index, total] of totals.entries()) {
       if (index > 0) {
@@ -48,7 +57,11 @@ function renderSummary(
         setIcon(separator, "plus");
       }
       yearly.createSpan({
-        text: formatMoney(moneyFromMinor(total.perYearMinor, total.currencyCode), registry),
+        text: formatMoney(
+          moneyFromMinor(total.perYearMinor, total.currencyCode),
+          registry,
+          displayPrecision
+        ),
       });
     }
   }
@@ -66,7 +79,13 @@ function renderSummary(
 
   const monthly = monthlyRow.createDiv({ cls: "subscription-calculator-summary-monthly" });
   if (totals.length === 0) {
-    monthly.createSpan({ text: formatMoney(moneyFromMinor(0, registry.getDefault().code), registry) });
+    monthly.createSpan({
+      text: formatMoney(
+        moneyFromMinor(0, registry.getDefault().code),
+        registry,
+        displayPrecision
+      ),
+    });
   } else {
     for (const [index, total] of totals.entries()) {
       if (index > 0) {
@@ -75,7 +94,11 @@ function renderSummary(
         setIcon(separator, "plus");
       }
       monthly.createSpan({
-        text: formatMoney(moneyFromMinor(total.perMonthMinor, total.currencyCode), registry),
+        text: formatMoney(
+          moneyFromMinor(total.perMonthMinor, total.currencyCode),
+          registry,
+          displayPrecision
+        ),
       });
     }
   }
