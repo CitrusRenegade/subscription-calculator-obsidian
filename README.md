@@ -1,6 +1,6 @@
 # Subscription Calculator
 
-![Subscription Calculator for Obsidian](.github/assets/subscription-calculator-banner.png)
+![Subscription Calculator for Obsidian](.github/assets/subscription-calculator-banner.jpg)
 
 *See what your subscriptions really cost — without leaving Obsidian.*
 
