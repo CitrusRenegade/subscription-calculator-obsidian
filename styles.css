@@ -43,7 +43,7 @@
 .subscription-calculator-summary-monthly {
   display: flex;
   align-items: center;
-  color: var(--text-normal);
+  color: var(--text-accent);
   white-space: nowrap;
 }
 
