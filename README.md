@@ -1,28 +1,33 @@
 # Subscription Calculator
 
-See what your subscriptions really cost — without leaving Obsidian.
+![Subscription Calculator for Obsidian](.github/assets/subscription-calculator-banner.png)
+
+*See what your subscriptions really cost — without leaving Obsidian.*
 
 Subscription Calculator gives you one clear place to track recurring payments, check upcoming charges, and understand your monthly and yearly spending.
 
 ## Made for your vault
 
-Your subscription data stays in Obsidian's local plugin storage. You do not need a separate service, Dataview, Bases, frontmatter, or one note per subscription.
+Your subscription data stays in Obsidian without dependencies. You do not need a separate service, one note per subscription, Dataview, Bases, or frontmatter.
 
-The plugin works offline for everyday use. An internet connection is only needed when fetching or refreshing website icons; downloaded icons are cached locally.
+The plugin works offline. Website **icons** are fetched once and **cached locally**.
 
 ## Your subscriptions at a glance
 
-- See the total cost per year and the average cost per month.
-- See upcoming renewals when a start date is set.
+- See the **total cost per year** and the **average per month**.
+- **See upcoming** renewals when a start date is set.
+- Add a service URL for its **favicon**.
+- **Pause a subscription** without deleting it or including it in your totals.
 - Keep different currencies separate, with no misleading conversions.
-- Pause a subscription without deleting it or including it in your totals.
-- **Sort** your list by:
+- Update the price, currency, or billing period directly from the subscription card.
+
+**Sort by:**
   - Name
   - Status
   - Next payment
-- Update the price, currency, or billing period directly from the subscription card.
 
-Choose from weekly, monthly, quarterly, yearly, or custom billing periods. Add a service URL for its favicon.
+Choose from weekly, monthly, quarterly, yearly, or custom billing periods.
+
 
 ## Get started
 
