@@ -16,16 +16,19 @@ The plugin works offline for everyday use. An internet connection is only needed
 - See upcoming renewals when a start date is set.
 - Keep different currencies separate, with no misleading conversions.
 - Pause a subscription without deleting it or including it in your totals.
-- Sort your list by name, status, or next payment.
+- **Sort** your list by:
+  - Name
+  - Status
+  - Next payment
 - Update the price, currency, or billing period directly from the subscription card.
 
-Choose from weekly, monthly, quarterly, yearly, or custom billing periods. Add a service URL for its favicon and keep a cancellation link with the subscription for later.
+Choose from weekly, monthly, quarterly, yearly, or custom billing periods. Add a service URL for its favicon.
 
 ## Get started
 
 1. Open **Subscriptions** from the ribbon or the command palette.
 2. Select **Add subscription** and enter its name, price, currency, and billing period.
-3. Optionally add a start date for next-payment tracking, a service URL, or a cancellation link, then select **Add**.
+3. Optionally add a start date for next-payment tracking or a service URL, then select **Add**.
 
 Your totals and next payment dates update automatically. Use the switch on a subscription card to include or exclude it from your active spending. Open the edit menu whenever you want to change its details or use an emoji instead of the website icon.
 
