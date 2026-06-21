@@ -29,8 +29,9 @@ The plugin works offline. Website **icons** are fetched once and **cached locall
 Choose from weekly, monthly, quarterly, yearly, or custom billing periods.
 
 
-## Get started
+## Installation and usage
 
+0. Install **Subscription Calculator** from Obsidian Community plugins.
 1. Open **Subscriptions** from the ribbon or the command palette.
 2. Select **Add subscription** and enter its name, price, currency, and billing period.
 3. Optionally add a start date for next-payment tracking or a service URL, then select **Add**.
