@@ -24,8 +24,8 @@
 
 .subscription-calculator-summary-values {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  white-space: nowrap;
 }
 
 .subscription-calculator-summary-subtitle {
@@ -42,9 +42,9 @@
 
 .subscription-calculator-summary-monthly {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   color: var(--text-accent);
-  white-space: nowrap;
 }
 
 .subscription-calculator-summary-separator {
@@ -105,6 +105,8 @@
 }
 
 .subscription-calculator-summary-floating .subscription-calculator-summary-values {
+  min-width: 0;
+  flex: 1 1 auto;
   font-weight: var(--font-semibold);
 }
 
