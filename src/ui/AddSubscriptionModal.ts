@@ -1,4 +1,5 @@
 import { App, Modal, Notice, Setting } from "obsidian";
+import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../constants";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
 import type { BillingPeriod } from "../types";
@@ -9,9 +10,8 @@ export class AddSubscriptionModal extends Modal {
   private currencyCode: string;
   private startDate = "";
   private billingPeriod: BillingPeriod = "monthly";
-  private customDays = 30;
+  private customDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
   private serviceUrl = "";
-  private cancelUrl = "";
 
   constructor(
     app: App,
@@ -78,7 +78,7 @@ export class AddSubscriptionModal extends Modal {
     if (this.billingPeriod === "custom") {
       new Setting(contentEl).setName("Custom period days").addText((text) =>
         text
-          .setPlaceholder("30")
+          .setPlaceholder(String(DEFAULT_CUSTOM_BILLING_PERIOD_DAYS))
           .setValue(String(this.customDays))
           .onChange((value) => {
             this.customDays = Number(value);
@@ -92,15 +92,6 @@ export class AddSubscriptionModal extends Modal {
       .addText((text) =>
         text.setPlaceholder("https://example.com").onChange((value) => {
           this.serviceUrl = value;
-        })
-      );
-
-    new Setting(contentEl)
-      .setName("Cancel URL")
-      .setDesc("Optional.")
-      .addText((text) =>
-        text.setPlaceholder("https://example.com/account").onChange((value) => {
-          this.cancelUrl = value;
         })
       );
 
@@ -123,7 +114,6 @@ export class AddSubscriptionModal extends Modal {
         customBillingPeriodDays:
           this.billingPeriod === "custom" ? this.customDays : undefined,
         serviceUrl: this.serviceUrl,
-        cancelUrl: this.cancelUrl,
       });
       this.close();
     } catch (e) {

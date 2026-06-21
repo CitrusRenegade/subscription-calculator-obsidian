@@ -1,4 +1,5 @@
 import { Notice, setIcon } from "obsidian";
+import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../../constants";
 import type { SubscriptionStore } from "../../data/SubscriptionStore";
 import { todayLocalDate } from "../../date/dateOnly";
 import {
@@ -221,7 +222,9 @@ export function renderSubscriptionCard(
         type: "number",
         min: "1",
         step: "1",
-        value: String(item.customBillingPeriodDays ?? 30),
+        value: String(
+          item.customBillingPeriodDays ?? DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
+        ),
         title: "Days",
       },
     });

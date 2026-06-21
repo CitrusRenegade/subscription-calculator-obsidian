@@ -48,7 +48,6 @@ export interface SubscriptionItem {
   billingPeriod: BillingPeriod;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
-  cancelUrl?: string;
   icon: SubscriptionIcon;
   createdOn: DateOnly;
   updatedOn: DateOnly;
@@ -84,7 +83,6 @@ export interface AddSubscriptionInput {
   billingPeriod: BillingPeriod;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
-  cancelUrl?: string;
   icon?: Partial<SubscriptionIcon>;
 }
 
@@ -96,7 +94,6 @@ export interface UpdateSubscriptionInput {
   billingPeriod?: BillingPeriod;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
-  cancelUrl?: string;
   icon?: Partial<SubscriptionIcon>;
 }
 

@@ -1,5 +1,8 @@
 import { Notice } from "obsidian";
-import { DISABLE_GRACE_PERIOD_MS } from "../constants";
+import {
+  DEFAULT_CUSTOM_BILLING_PERIOD_DAYS,
+  DISABLE_GRACE_PERIOD_MS,
+} from "../constants";
 import type {
   AddSubscriptionInput,
   BillingPeriod,
@@ -161,7 +164,6 @@ export class SubscriptionStore {
       customBillingPeriodDays:
         input.billingPeriod === "custom" ? input.customBillingPeriodDays : undefined,
       serviceUrl: normalizeUrlInput(input.serviceUrl),
-      cancelUrl: normalizeUrlInput(input.cancelUrl),
       icon: {
         mode: input.icon?.mode ?? "auto",
         emoji: input.icon?.emoji?.trim() || undefined,
@@ -205,6 +207,12 @@ export class SubscriptionStore {
         throw new Error("Select a valid billing period.");
       }
       item.billingPeriod = patch.billingPeriod;
+      if (
+        item.billingPeriod === "custom" &&
+        !item.customBillingPeriodDays
+      ) {
+        item.customBillingPeriodDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
+      }
     }
 
     if (patch.startDate !== undefined) {
@@ -231,9 +239,6 @@ export class SubscriptionStore {
       shouldRefreshIcon = serviceUrl !== item.serviceUrl;
       item.serviceUrl = serviceUrl;
       if (shouldRefreshIcon) this.iconService.clearIcon(item);
-    }
-    if (patch.cancelUrl !== undefined) {
-      item.cancelUrl = normalizeUrlInput(patch.cancelUrl);
     }
     if (patch.icon) {
       item.icon = {

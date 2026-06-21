@@ -1,4 +1,7 @@
-import { SCHEMA_VERSION } from "../constants";
+import {
+  DEFAULT_CUSTOM_BILLING_PERIOD_DAYS,
+  SCHEMA_VERSION,
+} from "../constants";
 import type {
   BillingPeriod,
   CachedIcon,
@@ -108,6 +111,14 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
   const rawIcon = isRecord(value.icon) ? value.icon : {};
   const status = asStatus(value.status);
   const disabledOn = parseDateOnly(value.disabledOn);
+  const billingPeriod = asPeriod(value.billingPeriod);
+  const customBillingPeriodDays =
+    typeof value.customBillingPeriodDays === "number" &&
+    value.customBillingPeriodDays > 0
+      ? value.customBillingPeriodDays
+      : billingPeriod === "custom"
+        ? DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
+        : undefined;
 
   return {
     id,
@@ -115,14 +126,9 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
     status,
     price: { amountMinor, currencyCode },
     startDate: parseDateOnly(value.startDate) ?? undefined,
-    billingPeriod: asPeriod(value.billingPeriod),
-    customBillingPeriodDays:
-      typeof value.customBillingPeriodDays === "number" &&
-      value.customBillingPeriodDays > 0
-        ? value.customBillingPeriodDays
-        : undefined,
+    billingPeriod,
+    customBillingPeriodDays,
     serviceUrl: asString(value.serviceUrl)?.trim() || undefined,
-    cancelUrl: asString(value.cancelUrl)?.trim() || undefined,
     icon: {
       mode: asIconMode(rawIcon.mode),
       emoji: asString(rawIcon.emoji)?.trim() || undefined,

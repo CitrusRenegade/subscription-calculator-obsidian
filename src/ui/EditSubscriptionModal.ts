@@ -6,7 +6,6 @@ import type { IconMode, SubscriptionItem } from "../types";
 export class EditSubscriptionModal extends Modal {
   private name: string;
   private serviceUrl: string;
-  private cancelUrl: string;
   private startDate: string;
   private iconMode: IconMode;
   private emoji: string;
@@ -20,7 +19,6 @@ export class EditSubscriptionModal extends Modal {
     super(app);
     this.name = item.name;
     this.serviceUrl = item.serviceUrl ?? "";
-    this.cancelUrl = item.cancelUrl ?? "";
     this.startDate = item.startDate ?? "";
     this.iconMode = item.icon.mode;
     this.emoji = item.icon.emoji ?? "";
@@ -41,12 +39,6 @@ export class EditSubscriptionModal extends Modal {
     new Setting(contentEl).setName("Service URL").addText((text) =>
       text.setValue(this.serviceUrl).onChange((value) => {
         this.serviceUrl = value;
-      })
-    );
-
-    new Setting(contentEl).setName("Cancel URL").addText((text) =>
-      text.setValue(this.cancelUrl).onChange((value) => {
-        this.cancelUrl = value;
       })
     );
 
@@ -100,7 +92,6 @@ export class EditSubscriptionModal extends Modal {
       await this.store.updateSubscription(this.item.id, {
         name: this.name,
         serviceUrl: this.serviceUrl,
-        cancelUrl: this.cancelUrl,
         startDate: this.startDate,
         icon: {
           mode: this.iconMode,
