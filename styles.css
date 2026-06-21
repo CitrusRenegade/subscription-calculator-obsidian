@@ -447,11 +447,22 @@
 }
 
 .subscription-calculator-table-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 4px 0;
+}
+
+.subscription-calculator-table-row:not(.is-header):not(:last-child)::after {
+  position: absolute;
+  right: 0;
+  bottom: -3px;
+  left: 36px;
+  height: 1px;
+  background: var(--background-modifier-border);
+  content: "";
 }
 
 .subscription-calculator-table-row.is-header {
