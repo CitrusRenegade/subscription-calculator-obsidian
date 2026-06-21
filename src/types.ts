@@ -44,7 +44,7 @@ export interface SubscriptionItem {
   name: string;
   status: SubscriptionStatus;
   price: Money;
-  startDate: DateOnly;
+  startDate?: DateOnly;
   billingPeriod: BillingPeriod;
   customBillingPeriodDays?: number;
   serviceUrl?: string;
@@ -80,7 +80,7 @@ export interface AddSubscriptionInput {
   name: string;
   priceText: string;
   currencyCode: string;
-  startDate: DateOnly;
+  startDate?: DateOnly;
   billingPeriod: BillingPeriod;
   customBillingPeriodDays?: number;
   serviceUrl?: string;

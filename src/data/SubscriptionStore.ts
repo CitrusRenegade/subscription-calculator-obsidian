@@ -137,8 +137,12 @@ export class SubscriptionStore {
     if (!isBillingPeriod(input.billingPeriod)) {
       throw new Error("Select a valid billing period.");
     }
-    const startDate = parseDateOnly(input.startDate);
-    if (!startDate) throw new Error("Select a valid start date.");
+    const startDate = input.startDate?.trim()
+      ? parseDateOnly(input.startDate) ?? undefined
+      : undefined;
+    if (input.startDate?.trim() && !startDate) {
+      throw new Error("Select a valid start date.");
+    }
     if (
       input.billingPeriod === "custom" &&
       (!input.customBillingPeriodDays || input.customBillingPeriodDays <= 0)
@@ -204,8 +208,12 @@ export class SubscriptionStore {
     }
 
     if (patch.startDate !== undefined) {
-      const startDate = parseDateOnly(patch.startDate);
-      if (!startDate) throw new Error("Select a valid start date.");
+      const startDate = patch.startDate.trim()
+        ? parseDateOnly(patch.startDate) ?? undefined
+        : undefined;
+      if (patch.startDate.trim() && !startDate) {
+        throw new Error("Select a valid start date.");
+      }
       item.startDate = startDate;
     }
 

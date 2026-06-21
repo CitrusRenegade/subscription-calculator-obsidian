@@ -6,6 +6,10 @@ import {
 } from "../src/date/paymentSchedule";
 
 describe("payment schedule", () => {
+  it("has no next payment without a start date", () => {
+    expect(getNextPaymentDate(undefined, "monthly", "2026-06-20")).toBeNull();
+  });
+
   it("finds the next weekly and custom payments", () => {
     expect(getNextPaymentDate("2026-06-01", "weekly", "2026-06-20")).toBe("2026-06-22");
     expect(getNextPaymentDate("2026-06-01", "custom", "2026-06-20", 10)).toBe("2026-06-21");

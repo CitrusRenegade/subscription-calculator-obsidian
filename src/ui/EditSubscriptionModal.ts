@@ -21,7 +21,7 @@ export class EditSubscriptionModal extends Modal {
     this.name = item.name;
     this.serviceUrl = item.serviceUrl ?? "";
     this.cancelUrl = item.cancelUrl ?? "";
-    this.startDate = item.startDate;
+    this.startDate = item.startDate ?? "";
     this.iconMode = item.icon.mode;
     this.emoji = item.icon.emoji ?? "";
   }
@@ -50,12 +50,15 @@ export class EditSubscriptionModal extends Modal {
       })
     );
 
-    new Setting(contentEl).setName("Start date").addText((text) => {
-      text.inputEl.type = "date";
-      text.setValue(this.startDate).onChange((value) => {
-        this.startDate = value;
+    new Setting(contentEl)
+      .setName("Start date")
+      .setDesc("Optional. Used to calculate the next payment.")
+      .addText((text) => {
+        text.inputEl.type = "date";
+        text.setValue(this.startDate).onChange((value) => {
+          this.startDate = value;
+        });
       });
-    });
 
     new Setting(contentEl).setName("Icon mode").addDropdown((dropdown) =>
       dropdown

@@ -76,12 +76,12 @@ function nextMonthBasedPayment(
 }
 
 export function getNextPaymentDate(
-  startDate: DateOnly,
+  startDate: DateOnly | undefined,
   billingPeriod: BillingPeriod,
   today: DateOnly,
   customBillingPeriodDays?: number
 ): DateOnly | null {
-  if (!isValidDateOnly(startDate) || !isValidDateOnly(today)) return null;
+  if (!startDate || !isValidDateOnly(startDate) || !isValidDateOnly(today)) return null;
 
   if (billingPeriod === "weekly") return nextDayBasedPayment(startDate, today, 7);
   if (billingPeriod === "monthly") return nextMonthBasedPayment(startDate, today, 1);

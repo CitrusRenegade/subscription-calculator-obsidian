@@ -5,7 +5,7 @@ import { sortSubscriptions } from "../src/ui/subscriptionSort";
 function item(
   name: string,
   effectiveStatus: "enabled" | "disabled",
-  startDate = "2026-06-20"
+  startDate: string | null = "2026-06-20"
 ): SubscriptionViewItem {
   return {
     id: name,
@@ -14,7 +14,7 @@ function item(
     effectiveStatus,
     inDisableGracePeriod: false,
     price: { amountMinor: 100, currencyCode: "USD" },
-    startDate,
+    startDate: startDate ?? undefined,
     billingPeriod: "monthly",
     icon: { mode: "none" },
     createdOn: "2026-06-20",
@@ -111,5 +111,19 @@ describe("sortSubscriptions", () => {
     );
 
     expect(result.map(({ name }) => name)).toEqual(["Later", "Sooner", "Disabled"]);
+  });
+
+  it("keeps subscriptions without a payment date after dated subscriptions", () => {
+    const result = sortSubscriptions(
+      [
+        item("Unknown", "enabled", null),
+        item("Dated", "enabled", "2026-06-21"),
+      ],
+      "next-payment",
+      "descending",
+      "2026-06-20"
+    );
+
+    expect(result.map(({ name }) => name)).toEqual(["Dated", "Unknown"]);
   });
 });

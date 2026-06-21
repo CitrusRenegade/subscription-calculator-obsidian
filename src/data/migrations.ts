@@ -114,7 +114,7 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
     name,
     status,
     price: { amountMinor, currencyCode },
-    startDate: parseDateOnly(value.startDate) ?? createdOn,
+    startDate: parseDateOnly(value.startDate) ?? undefined,
     billingPeriod: asPeriod(value.billingPeriod),
     customBillingPeriodDays:
       typeof value.customBillingPeriodDays === "number" &&

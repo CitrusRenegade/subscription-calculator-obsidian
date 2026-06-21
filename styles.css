@@ -73,8 +73,12 @@
   margin: 0;
   border: 0;
   border-radius: 0 0 20px 20px;
-  background: #000;
-  color: #fff;
+  background: color-mix(
+    in srgb,
+    var(--text-normal) 88%,
+    var(--background-primary)
+  );
+  color: var(--background-primary);
   box-shadow: var(--shadow-s);
   padding: 14px 12px 21px 24px;
   opacity: 0;
@@ -96,7 +100,7 @@
 
 .subscription-calculator-summary-floating .subscription-calculator-summary-title {
   flex: 0 0 auto;
-  color: rgb(255 255 255 / 65%);
+  color: color-mix(in srgb, var(--background-primary) 70%, transparent);
   font-weight: var(--font-medium);
 }
 
