@@ -22,6 +22,7 @@ import { sortSubscriptions } from "./subscriptionSort";
 export class SubscriptionsView extends ItemView {
   private unsubscribe: (() => void) | null = null;
   private summaryObserver: IntersectionObserver | null = null;
+  private summaryScrollHandler: (() => void) | null = null;
   private floatingSummaryEl: HTMLElement | null = null;
   private sortMode: SubscriptionSortMode;
   private sortDirection: SubscriptionSortDirection;
@@ -155,21 +156,40 @@ export class SubscriptionsView extends ItemView {
     this.floatingSummaryEl = renderFloatingSummary(this.containerEl, totals, this.registry);
     const viewWindow = container.ownerDocument.defaultView;
     if (viewWindow === null) return;
+    const summaryValues = summary.querySelector<HTMLElement>(
+      ".subscription-calculator-summary-values"
+    );
+    if (summaryValues === null) return;
 
+    const summaryValuesBottom =
+      summaryValues.getBoundingClientRect().bottom -
+      container.getBoundingClientRect().top +
+      container.scrollTop;
+
+    const updateFloatingSummaryVisibility = (): void => {
+      this.floatingSummaryEl?.classList.toggle(
+        "is-visible",
+        container.scrollTop >= summaryValuesBottom
+      );
+    };
+
+    this.summaryScrollHandler = updateFloatingSummaryVisibility;
+    container.addEventListener("scroll", updateFloatingSummaryVisibility, { passive: true });
     this.summaryObserver = new viewWindow.IntersectionObserver(
-      ([entry]) => {
-        const rootTop = entry.rootBounds?.top;
-        const summaryIsAboveView = rootTop !== undefined && entry.boundingClientRect.bottom <= rootTop;
-        this.floatingSummaryEl?.classList.toggle("is-visible", summaryIsAboveView);
-      },
+      updateFloatingSummaryVisibility,
       { root: container, threshold: 0 }
     );
-    this.summaryObserver.observe(summary);
+    this.summaryObserver.observe(summaryValues);
+    updateFloatingSummaryVisibility();
   }
 
   private cleanupSummaryOverlay(): void {
     this.summaryObserver?.disconnect();
     this.summaryObserver = null;
+    if (this.summaryScrollHandler !== null) {
+      this.contentEl.removeEventListener("scroll", this.summaryScrollHandler);
+      this.summaryScrollHandler = null;
+    }
     this.floatingSummaryEl?.remove();
     this.floatingSummaryEl = null;
   }
