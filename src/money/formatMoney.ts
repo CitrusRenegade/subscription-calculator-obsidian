@@ -6,16 +6,14 @@ export function formatMoney(money: Money, registry: CurrencyRegistry): string {
   const factor = 10 ** currency.scale;
   const amount = money.amountMinor / factor;
   const formatter = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: currency.scale,
-    maximumFractionDigits: currency.scale,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
   const formatted = formatter
     .formatToParts(amount)
     .map((part) => (part.type === "group" ? "\u00A0" : part.value))
     .join("");
-  return currency.symbol.length === 1
-    ? `${currency.symbol}${formatted}`
-    : `${formatted} ${currency.symbol}`;
+  return `${formatted} ${currency.symbol}`;
 }
 
 export function moneyToInputValue(money: Money, registry: CurrencyRegistry): string {

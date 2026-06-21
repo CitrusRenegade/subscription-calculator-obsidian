@@ -26,7 +26,12 @@ export function createMoneyInput(
   registry: CurrencyRegistry,
   onCommit: (value: string) => void
 ): HTMLInputElement {
-  const input = container.createEl("input", {
+  const field = container.createDiv({ cls: "subscription-calculator-money-field" });
+  const display = field.createEl("button", {
+    cls: "subscription-calculator-money-display",
+    attr: { type: "button" },
+  });
+  const input = field.createEl("input", {
     cls: "subscription-calculator-money-input",
     attr: {
       type: "number",
@@ -36,13 +41,41 @@ export function createMoneyInput(
       value: moneyToInputValue(money, registry),
     },
   });
+  input.hidden = true;
 
-  const updateWidth = () => setFieldTextWidth(input, input.value || "0", 5, 14);
+  const renderDisplay = () => {
+    display.empty();
+    const [whole, fraction] = input.value.split(/[.,]/, 2);
+    display.createSpan({ text: whole || "0" });
+    if (fraction !== undefined) {
+      display.createSpan({
+        cls: "subscription-calculator-money-fraction",
+        text: `.${fraction}`,
+      });
+    }
+    display.setAttribute("aria-label", `Edit price ${input.value || "0"}`);
+  };
+  const updateWidth = () => setFieldTextWidth(field, input.value || "0", 5, 14);
   const commit = () => onCommit(input.value);
+  const finishEditing = () => {
+    renderDisplay();
+    input.hidden = true;
+    display.hidden = false;
+    commit();
+  };
+
+  renderDisplay();
   updateWidth();
   input.addEventListener("input", updateWidth);
-  input.addEventListener("change", commit);
-  input.addEventListener("blur", commit);
+  input.addEventListener("blur", finishEditing);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") input.blur();
+  });
+  display.addEventListener("click", () => {
+    display.hidden = true;
+    input.hidden = false;
+    input.focus();
+  });
   return input;
 }
 
