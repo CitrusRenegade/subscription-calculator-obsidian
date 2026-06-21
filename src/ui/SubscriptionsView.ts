@@ -16,11 +16,13 @@ import { EditSubscriptionModal } from "./EditSubscriptionModal";
 import { renderAddSubscriptionCard } from "./components/AddSubscriptionCard";
 import { renderSubscriptionCard } from "./components/SubscriptionCard";
 import { renderSubscriptionSummaryTable } from "./components/SubscriptionSummaryTable";
-import { renderSummaryHeader } from "./components/SummaryHeader";
+import { renderFloatingSummary, renderSummaryHeader } from "./components/SummaryHeader";
 import { sortSubscriptions } from "./subscriptionSort";
 
 export class SubscriptionsView extends ItemView {
   private unsubscribe: (() => void) | null = null;
+  private summaryObserver: IntersectionObserver | null = null;
+  private floatingSummaryEl: HTMLElement | null = null;
   private sortMode: SubscriptionSortMode;
   private sortDirection: SubscriptionSortDirection;
 
@@ -57,14 +59,19 @@ export class SubscriptionsView extends ItemView {
   async onClose(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.cleanupSummaryOverlay();
+    this.containerEl.removeClass("subscription-calculator-view-container");
   }
 
   render(): void {
+    this.cleanupSummaryOverlay();
     const container = this.contentEl;
     container.empty();
     container.addClass("subscription-calculator-view");
+    this.containerEl.addClass("subscription-calculator-view-container");
 
-    renderSummaryHeader(container, this.store.getTotalsByCurrency(), this.registry);
+    const totals = this.store.getTotalsByCurrency();
+    const summary = renderSummaryHeader(container, totals, this.registry);
 
     const toolbar = container.createDiv({ cls: "subscription-calculator-toolbar" });
     const showDisabledButton = toolbar.createEl("button", {
@@ -144,6 +151,27 @@ export class SubscriptionsView extends ItemView {
       this.registry,
       this.iconService
     );
+
+    this.floatingSummaryEl = renderFloatingSummary(this.containerEl, totals, this.registry);
+    const viewWindow = container.ownerDocument.defaultView;
+    if (viewWindow === null) return;
+
+    this.summaryObserver = new viewWindow.IntersectionObserver(
+      ([entry]) => {
+        const rootTop = entry.rootBounds?.top;
+        const summaryIsAboveView = rootTop !== undefined && entry.boundingClientRect.bottom <= rootTop;
+        this.floatingSummaryEl?.classList.toggle("is-visible", summaryIsAboveView);
+      },
+      { root: container, threshold: 0 }
+    );
+    this.summaryObserver.observe(summary);
+  }
+
+  private cleanupSummaryOverlay(): void {
+    this.summaryObserver?.disconnect();
+    this.summaryObserver = null;
+    this.floatingSummaryEl?.remove();
+    this.floatingSummaryEl = null;
   }
 
   private selectSortMode(mode: SubscriptionSortMode): void {

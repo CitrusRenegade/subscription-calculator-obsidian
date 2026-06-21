@@ -32,16 +32,21 @@ export function getPerMonthMinor(item: SubscriptionItem): number {
 export function calculateTotalsByCurrency(
   subscriptions: SubscriptionItem[]
 ): MoneyTotal[] {
-  const totals = new Map<string, number>();
+  const totals = new Map<string, { perYearMinor: number; subscriptionCount: number }>();
   for (const item of subscriptions) {
-    totals.set(
-      item.price.currencyCode,
-      (totals.get(item.price.currencyCode) ?? 0) + getPerYearMinor(item)
-    );
+    const current = totals.get(item.price.currencyCode);
+    totals.set(item.price.currencyCode, {
+      perYearMinor: (current?.perYearMinor ?? 0) + getPerYearMinor(item),
+      subscriptionCount: (current?.subscriptionCount ?? 0) + 1,
+    });
   }
   return Array.from(totals.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([currencyCode, perYearMinor]) => ({
+    .sort(
+      ([currencyCodeA, totalA], [currencyCodeB, totalB]) =>
+        totalB.subscriptionCount - totalA.subscriptionCount ||
+        currencyCodeA.localeCompare(currencyCodeB)
+    )
+    .map(([currencyCode, { perYearMinor }]) => ({
       currencyCode,
       perYearMinor,
       perMonthMinor: Math.round(perYearMinor / 12),
@@ -51,4 +56,3 @@ export function calculateTotalsByCurrency(
 export function moneyFromMinor(amountMinor: number, currencyCode: string): Money {
   return { amountMinor, currencyCode };
 }
-

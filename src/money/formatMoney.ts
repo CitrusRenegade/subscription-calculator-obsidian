@@ -9,7 +9,10 @@ export function formatMoney(money: Money, registry: CurrencyRegistry): string {
     minimumFractionDigits: currency.scale,
     maximumFractionDigits: currency.scale,
   });
-  const formatted = formatter.format(amount);
+  const formatted = formatter
+    .formatToParts(amount)
+    .map((part) => (part.type === "group" ? "\u00A0" : part.value))
+    .join("");
   return currency.symbol.length === 1
     ? `${currency.symbol}${formatted}`
     : `${formatted} ${currency.symbol}`;
@@ -20,4 +23,3 @@ export function moneyToInputValue(money: Money, registry: CurrencyRegistry): str
   const factor = 10 ** currency.scale;
   return (money.amountMinor / factor).toFixed(currency.scale);
 }
-

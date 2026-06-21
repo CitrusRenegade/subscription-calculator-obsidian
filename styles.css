@@ -1,3 +1,7 @@
+.subscription-calculator-view-container {
+  position: relative;
+}
+
 .subscription-calculator-view {
   --subscription-card-radius: 8px;
   padding: 16px;
@@ -19,8 +23,9 @@
 }
 
 .subscription-calculator-summary-values {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .subscription-calculator-summary-subtitle {
@@ -37,13 +42,66 @@
 
 .subscription-calculator-summary-monthly {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
+  align-items: center;
   color: var(--text-normal);
+  white-space: nowrap;
 }
 
-.subscription-calculator-summary-monthly > div {
-  white-space: nowrap;
+.subscription-calculator-summary-separator {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-inline: 6px;
+}
+
+.subscription-calculator-summary-separator > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.subscription-calculator-summary-floating {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 0 0 20px 20px;
+  background: #000;
+  color: #fff;
+  box-shadow: var(--shadow-s);
+  padding: 14px 12px 21px 24px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.subscription-calculator-summary-floating.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.subscription-calculator-summary-floating .subscription-calculator-summary-title,
+.subscription-calculator-summary-floating .subscription-calculator-summary-values {
+  font-size: 120%;
+  line-height: 1.2;
+}
+
+.subscription-calculator-summary-floating .subscription-calculator-summary-title {
+  flex: 0 0 auto;
+  color: rgb(255 255 255 / 65%);
+  font-weight: var(--font-medium);
+}
+
+.subscription-calculator-summary-floating .subscription-calculator-summary-values {
+  font-weight: var(--font-semibold);
 }
 
 .subscription-calculator-toolbar {

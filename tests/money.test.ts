@@ -45,17 +45,30 @@ describe("money helpers", () => {
     expect(formatMoney(moneyFromMinor(1999, "USD"), registry)).toMatch(
       /^\$19[,.]99$/
     );
+    expect(formatMoney(moneyFromMinor(3878000, "USD"), registry)).toMatch(
+      /^\$38\u00A0780[,.]00$/
+    );
   });
 
-  it("calculates yearly totals by currency", () => {
+  it("calculates yearly totals and orders currencies by subscription count", () => {
     const chatGpt = subscription("ChatGPT", 2000, "USD", "monthly");
     const yearlyVpn = subscription("VPN", 2400, "USD", "yearly");
     const euroTool = subscription("Euro Tool", 1000, "EUR", "quarterly");
 
     expect(getPerYearMinor(chatGpt)).toBe(24000);
     expect(calculateTotalsByCurrency([chatGpt, yearlyVpn, euroTool])).toEqual([
-      { currencyCode: "EUR", perYearMinor: 4000, perMonthMinor: 333 },
       { currencyCode: "USD", perYearMinor: 26400, perMonthMinor: 2200 },
+      { currencyCode: "EUR", perYearMinor: 4000, perMonthMinor: 333 },
+    ]);
+  });
+
+  it("orders currencies alphabetically when subscription counts match", () => {
+    const dollarTool = subscription("Dollar Tool", 1000, "USD", "monthly");
+    const euroTool = subscription("Euro Tool", 1000, "EUR", "monthly");
+
+    expect(calculateTotalsByCurrency([dollarTool, euroTool]).map((total) => total.currencyCode)).toEqual([
+      "EUR",
+      "USD",
     ]);
   });
 
