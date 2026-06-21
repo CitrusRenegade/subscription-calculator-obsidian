@@ -1,50 +1,34 @@
 # Subscription Calculator
 
-Subscription Calculator is an Obsidian plugin for tracking recurring subscriptions directly inside your vault.
+See what your subscriptions really cost — without leaving Obsidian.
 
-It helps you keep a compact list of active and paused subscriptions, see yearly totals, and understand what your subscriptions cost over time.
+Subscription Calculator gives you one clear place to track recurring payments, check upcoming charges, and understand your monthly and yearly spending.
 
-## Features
+## Made for your vault
 
-- Track subscriptions with name, price, currency, billing period, and icon.
-- See totals per year and approximate totals per month.
-- Keep totals separated by currency.
-- Enable or disable subscriptions without deleting them.
-- Exclude disabled subscriptions from totals.
-- Add, edit, and delete subscriptions from a dedicated plugin view.
-- Use cached favicons, manual icon URLs, emoji icons, or text fallback icons.
+Your subscription data stays in Obsidian's local plugin storage. You do not need a separate service, Dataview, Bases, frontmatter, or one note per subscription.
 
-## Usage
+The plugin works offline for everyday use. An internet connection is only needed when fetching or refreshing website icons; downloaded icons are cached locally.
 
-Open the `Subscriptions` view from the ribbon icon or the command palette.
+## Your subscriptions at a glance
 
-Use `Add subscription` to create a new item. Each subscription can have:
+- See the total cost per year and the average cost per month.
+- Know how soon each active subscription will renew.
+- Keep different currencies separate, with no misleading conversions.
+- Pause a subscription without deleting it or including it in your totals.
+- Sort your list by name, status, or next payment.
+- Update the price, currency, or billing period directly from the subscription card.
 
-- a name;
-- a price;
-- a currency;
-- a billing period;
-- an optional service URL;
-- an optional cancellation URL;
-- an icon.
+Choose from weekly, monthly, quarterly, yearly, or custom billing periods. Add a service URL for its favicon and keep a cancellation link with the subscription for later.
 
-The toggle on each card controls whether the subscription is currently active. Disabled subscriptions stay in the list but are not counted in totals.
+## Get started
 
-## Data And Privacy
+1. Open **Subscriptions** from the ribbon or the command palette.
+2. Select **Add subscription** and enter its name, price, currency, billing period, and start date.
+3. Add an optional service URL or cancellation link, then select **Add**.
 
-Subscription Calculator stores its data locally using Obsidian's plugin storage.
+Your totals and next payment dates update automatically. Use the switch on a subscription card to include or exclude it from your active spending. Open the edit menu whenever you want to change its details or use an emoji instead of the website icon.
 
-It does not require:
+## Supported currencies
 
-- Dataview;
-- Obsidian Bases;
-- frontmatter;
-- one note per subscription;
-- an external account;
-- an external service for normal viewing and editing.
-
-Normal viewing and editing does not require internet access. Internet access is only used when fetching or refreshing favicons.
-
-## Status
-
-The plugin is in an early MVP stage. The core local subscription tracking workflow is available, and more features may be added over time.
+Subscription Calculator includes USD, EUR, RUB, GBP, CHF, and JPY. Totals are shown separately for each currency instead of relying on changing exchange rates.
