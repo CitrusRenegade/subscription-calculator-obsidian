@@ -22,6 +22,16 @@ export function renderFloatingSummary(
   return renderSummary(container, totals, registry, displayPrecision, true);
 }
 
+export function updateFloatingSummary(
+  header: HTMLElement,
+  totals: MoneyTotal[],
+  registry: CurrencyRegistry,
+  displayPrecision: MoneyDisplayPrecision
+): void {
+  header.empty();
+  renderSummaryContents(header, totals, registry, displayPrecision, true);
+}
+
 function renderSummary(
   container: HTMLElement,
   totals: MoneyTotal[],
@@ -37,12 +47,25 @@ function renderSummary(
   if (floating) {
     header.setAttribute("aria-hidden", "true");
   }
+  renderSummaryContents(header, totals, registry, displayPrecision, floating);
+  return header;
+}
+
+function renderSummaryContents(
+  header: HTMLElement,
+  totals: MoneyTotal[],
+  registry: CurrencyRegistry,
+  displayPrecision: MoneyDisplayPrecision,
+  floating: boolean
+): void {
   const title = header.createDiv({ cls: "subscription-calculator-summary-title" });
   title.setText(totals.length === 0 ? "No enabled subscriptions" : "Per year");
 
   const yearly = header.createDiv({ cls: "subscription-calculator-summary-values" });
   if (totals.length === 0) {
-    yearly.createSpan({
+    const term = yearly.createSpan({ cls: "subscription-calculator-summary-term" });
+    term.createSpan({
+      cls: "subscription-calculator-summary-amount",
       text: formatMoney(
         moneyFromMinor(0, registry.getDefault().code),
         registry,
@@ -51,12 +74,14 @@ function renderSummary(
     });
   } else {
     for (const [index, total] of totals.entries()) {
+      const term = yearly.createSpan({ cls: "subscription-calculator-summary-term" });
       if (index > 0) {
-        const separator = yearly.createSpan({ cls: "subscription-calculator-summary-separator" });
+        const separator = term.createSpan({ cls: "subscription-calculator-summary-separator" });
         separator.setAttribute("aria-hidden", "true");
         setIcon(separator, "plus");
       }
-      yearly.createSpan({
+      term.createSpan({
+        cls: "subscription-calculator-summary-amount",
         text: formatMoney(
           moneyFromMinor(total.perYearMinor, total.currencyCode),
           registry,
@@ -67,7 +92,7 @@ function renderSummary(
   }
 
   if (floating) {
-    return header;
+    return;
   }
 
   const monthlyRow = header.createDiv({ cls: "subscription-calculator-summary-monthly-row" });
@@ -79,7 +104,9 @@ function renderSummary(
 
   const monthly = monthlyRow.createDiv({ cls: "subscription-calculator-summary-monthly" });
   if (totals.length === 0) {
-    monthly.createSpan({
+    const term = monthly.createSpan({ cls: "subscription-calculator-summary-term" });
+    term.createSpan({
+      cls: "subscription-calculator-summary-amount",
       text: formatMoney(
         moneyFromMinor(0, registry.getDefault().code),
         registry,
@@ -88,12 +115,14 @@ function renderSummary(
     });
   } else {
     for (const [index, total] of totals.entries()) {
+      const term = monthly.createSpan({ cls: "subscription-calculator-summary-term" });
       if (index > 0) {
-        const separator = monthly.createSpan({ cls: "subscription-calculator-summary-separator" });
+        const separator = term.createSpan({ cls: "subscription-calculator-summary-separator" });
         separator.setAttribute("aria-hidden", "true");
         setIcon(separator, "plus");
       }
-      monthly.createSpan({
+      term.createSpan({
+        cls: "subscription-calculator-summary-amount",
         text: formatMoney(
           moneyFromMinor(total.perMonthMinor, total.currencyCode),
           registry,
@@ -102,6 +131,4 @@ function renderSummary(
       });
     }
   }
-
-  return header;
 }

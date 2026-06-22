@@ -1,12 +1,15 @@
-.subscription-calculator-view-container {
-  position: relative;
-}
-
-.subscription-calculator-view {
+.view-content.subscription-calculator-view {
   --subscription-card-radius: 8px;
-  padding: 16px;
+  --subscription-calculator-overlay-height: 0px;
+  container-type: inline-size;
+  padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-padding-top: var(--subscription-calculator-overlay-height);
+}
+
+.subscription-calculator-view-body {
+  padding: 16px;
 }
 
 .subscription-calculator-summary {
@@ -20,6 +23,19 @@
   font-size: 26px;
   font-weight: 700;
   line-height: 1.15;
+}
+
+.subscription-calculator-summary-term {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  align-items: center;
+}
+
+.subscription-calculator-summary-amount {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .subscription-calculator-summary-values {
@@ -60,14 +76,22 @@
   height: 19px;
 }
 
+.subscription-calculator-summary-overlay {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  height: 0;
+  pointer-events: none;
+}
+
 .subscription-calculator-summary-floating {
   position: absolute;
-  z-index: 10;
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  max-block-size: min(40vh, 12rem);
   align-items: center;
   top: 0;
-  right: 0;
-  bottom: auto;
   left: 0;
   gap: 8px;
   margin: 0;
@@ -82,6 +106,7 @@
   box-shadow: var(--shadow-s);
   padding: 14px 12px 21px 24px;
   opacity: 0;
+  overflow-y: auto;
   pointer-events: none;
   transform: translateY(-100%);
   transition: opacity 150ms ease, transform 150ms ease;
@@ -89,6 +114,7 @@
 
 .subscription-calculator-summary-floating.is-visible {
   opacity: 1;
+  pointer-events: auto;
   transform: translateY(0);
 }
 
@@ -492,5 +518,18 @@
   .subscription-calculator-custom-days {
     min-height: 32px;
     font-size: var(--font-ui-smaller);
+  }
+}
+
+@container (max-width: 360px) {
+  .subscription-calculator-summary-floating {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px 14px;
+  }
+
+  .subscription-calculator-summary-floating .subscription-calculator-summary-values {
+    width: 100%;
   }
 }
