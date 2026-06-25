@@ -18,11 +18,6 @@ export function getCurrencySelectLabel(currency: CurrencyMeta): string {
 }
 
 export function getCurrencyFallbackIconText(currency: CurrencyMeta): string {
-  if (currency.icon?.mode === "text" || currency.icon?.mode === "emoji") {
-    const iconText = currency.icon.value?.trim();
-    if (iconText) return getGraphemes(iconText).slice(0, 2).join("");
-  }
-
   return getGraphemes(currency.label || currency.code)
     .slice(0, 2)
     .join("")

@@ -13,9 +13,14 @@ export function parseMoneyInput(
   if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
 
   const [majorPart, fractionPart = ""] = normalized.split(".");
-  if (fractionPart.length > currency.scale) return null;
+  if (
+    fractionPart.length > currency.scale &&
+    !fractionPart.slice(currency.scale).split("").every((digit) => digit === "0")
+  ) {
+    return null;
+  }
 
-  const paddedFraction = fractionPart.padEnd(currency.scale, "0");
+  const paddedFraction = fractionPart.slice(0, currency.scale).padEnd(currency.scale, "0");
   const majorMinor = Number(majorPart) * 10 ** currency.scale;
   const fractionMinor = paddedFraction ? Number(paddedFraction) : 0;
   const amountMinor = majorMinor + fractionMinor;
@@ -23,4 +28,3 @@ export function parseMoneyInput(
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) return null;
   return { amountMinor, currencyCode: currency.code };
 }
-

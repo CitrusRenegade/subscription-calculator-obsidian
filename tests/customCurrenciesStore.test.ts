@@ -27,7 +27,10 @@ function createSubscription(currencyCode: string): SubscriptionItem {
   };
 }
 
-function createStore(data: PluginData): SubscriptionStore {
+function createStore(
+  data: PluginData,
+  saveData: () => Promise<void> = async () => undefined
+): SubscriptionStore {
   const registry = new DataBackedCurrencyRegistry(
     () => data.settings.defaultCurrency,
     () => data.customCurrencies
@@ -39,7 +42,7 @@ function createStore(data: PluginData): SubscriptionStore {
     getCachedIcon: () => null,
   } as unknown as IconService;
 
-  return new SubscriptionStore(data, registry, iconService, async () => undefined);
+  return new SubscriptionStore(data, registry, iconService, saveData);
 }
 
 describe("custom currency store rules", () => {
@@ -61,6 +64,34 @@ describe("custom currency store rules", () => {
       source: "custom",
     });
     expect(data.customCurrencies[0]?.code).toMatch(/^CUSTOM_[A-Z0-9]+$/);
+  });
+
+  it("only creates custom currencies with MVP price formats", async () => {
+    const data = createDefaultData();
+    const store = createStore(data);
+
+    await expect(
+      store.addCustomCurrency({
+        label: "tok",
+        amountMarker: "🪙",
+        scale: 8,
+      })
+    ).rejects.toThrow("Enter valid custom currency details.");
+    expect(data.customCurrencies).toHaveLength(0);
+  });
+
+  it("does not allow duplicate visible currency labels", async () => {
+    const data = createDefaultData();
+    const store = createStore(data);
+
+    await expect(
+      store.addCustomCurrency({
+        label: "usd",
+        amountMarker: "$",
+        scale: 2,
+      })
+    ).rejects.toThrow("A currency with this label already exists.");
+    expect(data.customCurrencies).toHaveLength(0);
   });
 
   it("archives used custom currencies instead of deleting metadata", async () => {
@@ -97,6 +128,44 @@ describe("custom currency store rules", () => {
     expect(data.customCurrencies[0]?.scale).toBe(2);
   });
 
+  it("does not allow unused MVP currencies to switch to advanced precision", async () => {
+    const data = createDefaultData();
+    data.customCurrencies = [{ ...customCurrency }];
+    const store = createStore(data);
+
+    await expect(
+      store.updateCustomCurrency(customCurrency.code, { scale: 8 })
+    ).rejects.toThrow("Price format must use whole numbers or decimals.");
+    expect(data.customCurrencies[0]?.scale).toBe(2);
+  });
+
+  it("preserves legacy advanced precision while editing labels", async () => {
+    const data = createDefaultData();
+    data.customCurrencies = [{ ...customCurrency, scale: 8 }];
+    const store = createStore(data);
+
+    await store.updateCustomCurrency(customCurrency.code, { label: "coin" });
+
+    expect(data.customCurrencies[0]).toMatchObject({
+      label: "COIN",
+      scale: 8,
+    });
+  });
+
+  it("does not allow updates to duplicate visible currency labels", async () => {
+    const data = createDefaultData();
+    data.customCurrencies = [{ ...customCurrency }];
+    const store = createStore(data);
+
+    await expect(
+      store.updateCustomCurrency(customCurrency.code, {
+        label: "usd",
+        amountMarker: "$",
+      })
+    ).rejects.toThrow("A currency with this label already exists.");
+    expect(data.customCurrencies[0]?.label).toBe("TOK");
+  });
+
   it("resets a custom default currency when it is archived", async () => {
     const data = createDefaultData();
     data.customCurrencies = [{ ...customCurrency }];
@@ -108,6 +177,23 @@ describe("custom currency store rules", () => {
 
     expect(data.settings.defaultCurrency).toBe("USD");
     expect(data.customCurrencies[0]?.isArchived).toBe(true);
+  });
+
+  it("saves when cleanup only resets an archived default currency", async () => {
+    const data = createDefaultData();
+    let saveCount = 0;
+    data.customCurrencies = [{ ...customCurrency, isArchived: true }];
+    data.settings.defaultCurrency = customCurrency.code;
+    data.subscriptions = [createSubscription(customCurrency.code)];
+    const store = createStore(data, async () => {
+      saveCount += 1;
+    });
+
+    await store.cleanupUnusedArchivedCustomCurrencies();
+
+    expect(data.settings.defaultCurrency).toBe("USD");
+    expect(data.customCurrencies).toHaveLength(1);
+    expect(saveCount).toBe(1);
   });
 
   it("cleans up archived unused currencies on startup", async () => {

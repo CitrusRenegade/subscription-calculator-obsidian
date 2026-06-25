@@ -1,4 +1,5 @@
 import type { CurrencyMeta } from "../types";
+import { BUILTIN_CURRENCIES } from "./currencies";
 
 interface SegmenterLike {
   segment(value: string): Iterable<{ segment: string }>;
@@ -21,6 +22,10 @@ export interface NormalizedCustomCurrencyInput {
   label: string;
   amountMarker?: string;
   scale: number;
+}
+
+function isMvpCurrencyScale(value: number): boolean {
+  return value === 0 || value === 2;
 }
 
 export function getGraphemes(value: string): string[] {
@@ -74,6 +79,21 @@ export function normalizeCurrencyScale(value: number): number | null {
   return value;
 }
 
+export function normalizeNewCurrencyScale(value: number): number | null {
+  if (!isMvpCurrencyScale(value)) return null;
+  return value;
+}
+
+export function normalizeExistingCustomCurrencyCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const code = value.trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{1,32}$/.test(code)) return null;
+  if (BUILTIN_CURRENCIES.some((currency) => currency.code === code)) return null;
+
+  return code;
+}
+
 export function normalizeCustomCurrencyInput(
   input: CustomCurrencyInput
 ): NormalizedCustomCurrencyInput | null {
@@ -85,13 +105,24 @@ export function normalizeCustomCurrencyInput(
   return { label, amountMarker, scale };
 }
 
+export function normalizeNewCustomCurrencyInput(
+  input: CustomCurrencyInput
+): NormalizedCustomCurrencyInput | null {
+  const label = normalizeCurrencyLabel(input.label);
+  const amountMarker = normalizeCurrencyAmountMarker(input.amountMarker ?? "");
+  const scale = normalizeNewCurrencyScale(input.scale);
+
+  if (!label || amountMarker === null || scale === null) return null;
+  return { label, amountMarker, scale };
+}
+
 export function sanitizeCustomCurrency(value: unknown): CurrencyMeta | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   if (raw.source !== "custom") return null;
 
-  const code = typeof raw.code === "string" ? raw.code.trim().toUpperCase() : "";
-  if (!/^CUSTOM_[A-Z0-9_-]{4,32}$/.test(code)) return null;
+  const code = normalizeExistingCustomCurrencyCode(raw.code);
+  if (!code) return null;
 
   const rawLabel =
     typeof raw.label === "string"

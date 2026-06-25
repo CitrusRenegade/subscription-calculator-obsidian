@@ -36,13 +36,6 @@ export function renderSubscriptionIcon(
     return;
   }
   const currency = registry.get(item.price.currencyCode);
-  if (currency?.icon?.mode === "text" || currency?.icon?.mode === "emoji") {
-    const iconText = getCurrencyFallbackIconText(currency);
-    if (iconText) {
-      icon.setText(iconText);
-      return;
-    }
-  }
   if (currency?.source === "custom") {
     icon.setText(getCurrencyFallbackIconText(currency) || "?");
     return;

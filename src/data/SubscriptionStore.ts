@@ -22,9 +22,11 @@ import { normalizeUrlInput } from "../icons/url";
 import { moneyToInputValue } from "../money/formatMoney";
 import { parseMoneyInput } from "../money/parseMoneyInput";
 import { calculateTotalsByCurrency } from "../money/totals";
+import { getCurrencySelectLabel } from "../money/currencyDisplay";
 import {
   type CustomCurrencyInput,
   normalizeCustomCurrencyInput,
+  normalizeNewCustomCurrencyInput,
 } from "../money/currencyValidation";
 
 interface DisableGracePeriod {
@@ -74,6 +76,10 @@ function isBillingPeriod(value: string): value is BillingPeriod {
     value === "yearly" ||
     value === "custom"
   );
+}
+
+function isMvpCurrencyScale(value: number): boolean {
+  return value === 0 || value === 2;
 }
 
 export class SubscriptionStore {
@@ -147,8 +153,33 @@ export class SubscriptionStore {
     );
   }
 
-  private ensureDefaultCurrencyValid(): void {
-    this.data.settings.defaultCurrency = this.currencyRegistry.getDefault().code;
+  private ensureDefaultCurrencyValid(): boolean {
+    const defaultCurrency = this.currencyRegistry.getDefault().code;
+    if (this.data.settings.defaultCurrency === defaultCurrency) return false;
+
+    this.data.settings.defaultCurrency = defaultCurrency;
+    return true;
+  }
+
+  private assertUniqueCurrencyDisplay(
+    next: Pick<CurrencyMeta, "code" | "label" | "amountMarker" | "scale" | "source">,
+    currentCode?: string
+  ): void {
+    const normalizedCurrentCode = currentCode
+      ? normalizeCurrencyCode(currentCode)
+      : null;
+    const nextDisplay = getCurrencySelectLabel(next).toLocaleLowerCase();
+    const duplicate = this.currencyRegistry
+      .listSelectable()
+      .some(
+        (currency) =>
+          normalizeCurrencyCode(currency.code) !== normalizedCurrentCode &&
+          getCurrencySelectLabel(currency).toLocaleLowerCase() === nextDisplay
+      );
+
+    if (duplicate) {
+      throw new Error("A currency with this label already exists.");
+    }
   }
 
   private pruneUnusedArchivedCustomCurrencies(): boolean {
@@ -227,7 +258,7 @@ export class SubscriptionStore {
   }
 
   async addCustomCurrency(input: CustomCurrencyInput): Promise<void> {
-    const normalized = normalizeCustomCurrencyInput(input);
+    const normalized = normalizeNewCustomCurrencyInput(input);
     if (!normalized) throw new Error("Enter valid custom currency details.");
 
     let code = createCustomCurrencyCode();
@@ -235,22 +266,24 @@ export class SubscriptionStore {
       code = createCustomCurrencyCode();
     }
 
-    this.data.customCurrencies.push({
+    const currency: CurrencyMeta = {
       code,
       label: normalized.label,
       amountMarker: normalized.amountMarker,
       scale: normalized.scale,
       source: "custom",
-    });
+    };
+    this.assertUniqueCurrencyDisplay(currency);
+    this.data.customCurrencies.push(currency);
 
     await this.saveData();
     this.notify();
   }
 
   async cleanupUnusedArchivedCustomCurrencies(): Promise<void> {
-    this.ensureDefaultCurrencyValid();
-    const changed = this.pruneUnusedArchivedCustomCurrencies();
-    if (!changed) return;
+    const defaultChanged = this.ensureDefaultCurrencyValid();
+    const pruned = this.pruneUnusedArchivedCustomCurrencies();
+    if (!defaultChanged && !pruned) return;
 
     await this.saveData();
     this.notify();
@@ -273,6 +306,22 @@ export class SubscriptionStore {
     if (this.isCurrencyUsed(currency.code) && next.scale !== currency.scale) {
       throw new Error("Price format cannot be changed while this currency is used.");
     }
+    const preservesLegacyScale =
+      !isMvpCurrencyScale(currency.scale) && next.scale === currency.scale;
+    if (!preservesLegacyScale && !isMvpCurrencyScale(next.scale)) {
+      throw new Error("Price format must use whole numbers or decimals.");
+    }
+
+    this.assertUniqueCurrencyDisplay(
+      {
+        code: currency.code,
+        label: next.label,
+        amountMarker: next.amountMarker,
+        scale: next.scale,
+        source: "custom",
+      },
+      currency.code
+    );
 
     currency.label = next.label;
     currency.amountMarker = next.amountMarker;

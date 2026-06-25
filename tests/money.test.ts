@@ -103,6 +103,10 @@ describe("money helpers", () => {
       amountMinor: 1200,
       currencyCode: "JPY",
     });
+    expect(parseMoneyInput("1200.00", "JPY", registry)).toEqual({
+      amountMinor: 1200,
+      currencyCode: "JPY",
+    });
     expect(parseMoneyInput("1.23", "JPY", registry)).toBeNull();
   });
 
@@ -143,7 +147,7 @@ describe("money helpers", () => {
     );
   });
 
-  it("handles grapheme-based amount marker and icon text rules", () => {
+  it("handles grapheme-based amount marker and fallback icon text rules", () => {
     for (const value of ["🪙", "❤️", "🇺🇦", "1️⃣"]) {
       expect(getGraphemes(value)).toHaveLength(1);
       expect(normalizeCurrencyAmountMarker(value)).toBe(value);
@@ -157,7 +161,6 @@ describe("money helpers", () => {
     expect(normalizeCurrencyAmountMarker("USDT")).toBe("USDT");
     expect(getCurrencyFallbackIconText(textMarkerCurrency)).toBe("US");
     expect(getCurrencyFallbackIconText({ ...customCurrency, amountMarker: "⭐" })).toBe("TO");
-    expect(getCurrencyFallbackIconText({ ...customCurrency, icon: { mode: "text", value: "⭐" } })).toBe("⭐");
   });
 
   it("keeps archived custom currencies resolvable for old subscriptions", () => {

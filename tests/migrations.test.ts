@@ -72,6 +72,20 @@ describe("plugin data migrations", () => {
           scale: 8,
           source: "custom",
         },
+        {
+          code: "tok",
+          label: "legacy",
+          amountMarker: "tok",
+          scale: 2,
+          source: "custom",
+        },
+        {
+          code: "USD",
+          label: "usd custom",
+          amountMarker: "$",
+          scale: 2,
+          source: "custom",
+        },
       ],
     });
 
@@ -97,6 +111,14 @@ describe("plugin data migrations", () => {
         label: "HI",
         amountMarker: "hi",
         scale: 8,
+        source: "custom",
+        isArchived: false,
+      },
+      {
+        code: "TOK",
+        label: "LEGACY",
+        amountMarker: "tok",
+        scale: 2,
         source: "custom",
         isArchived: false,
       },

@@ -70,13 +70,7 @@ export interface CurrencyMeta {
   amountMarker?: string;
   scale: number;
   source: "builtin" | "custom";
-  icon?: CurrencyIconMeta;
   isArchived?: boolean;
-}
-
-export interface CurrencyIconMeta {
-  mode: "text" | "emoji" | "lucide" | "none";
-  value?: string;
 }
 
 export interface MoneyTotal {
