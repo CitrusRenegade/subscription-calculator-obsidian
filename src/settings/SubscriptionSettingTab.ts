@@ -209,8 +209,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       )
       .addText((text) =>
         text
-          // eslint-disable-next-line obsidianmd/ui/sentence-case -- Currency markers are case-sensitive examples.
-          .setPlaceholder("E.g. €, C$, emojis")
+          .setPlaceholder("E.g. €, c$, emojis")
           .setValue(amountMarker)
           .onChange((value) => {
             amountMarker = value;
