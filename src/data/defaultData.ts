@@ -18,5 +18,6 @@ export function createDefaultData(): PluginData {
     settings: { ...DEFAULT_SETTINGS },
     subscriptions: [],
     iconCache: {},
+    customCurrencies: [],
   };
 }

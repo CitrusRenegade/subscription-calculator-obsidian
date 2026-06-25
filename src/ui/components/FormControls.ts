@@ -1,4 +1,5 @@
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
+import { getCurrencySelectLabel } from "../../money/currencyDisplay";
 import { moneyToInputValue } from "../../money/formatMoney";
 import type { BillingPeriod, Money } from "../../types";
 
@@ -88,9 +89,22 @@ export function createCurrencySelect(
   const select = container.createEl("select", {
     cls: "subscription-calculator-select",
   });
-  for (const currency of registry.list()) {
+  const selectable = registry.listSelectable();
+  const selectedCurrency = registry.get(selectedCode);
+  if (
+    selectedCurrency &&
+    !selectable.some((currency) => currency.code === selectedCurrency.code)
+  ) {
     const option = select.createEl("option", {
-      text: `${currency.code} ${currency.symbol}`,
+      text: `${getCurrencySelectLabel(selectedCurrency)} (archived)`,
+      attr: { value: selectedCurrency.code },
+    });
+    option.selected = true;
+    option.disabled = true;
+  }
+  for (const currency of selectable) {
+    const option = select.createEl("option", {
+      text: getCurrencySelectLabel(currency),
       attr: { value: currency.code },
     });
     option.selected = currency.code === selectedCode;

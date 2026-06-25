@@ -2,6 +2,7 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../constants";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
+import { getCurrencySelectLabel } from "../money/currencyDisplay";
 import type { BillingPeriod } from "../types";
 
 export class AddSubscriptionModal extends Modal {
@@ -42,9 +43,13 @@ export class AddSubscriptionModal extends Modal {
     );
 
     new Setting(contentEl).setName("Currency").addDropdown((dropdown) => {
-      for (const currency of this.registry.list()) {
-        dropdown.addOption(currency.code, `${currency.code} ${currency.symbol}`);
+      const selectable = this.registry.listSelectable();
+      for (const currency of selectable) {
+        dropdown.addOption(currency.code, getCurrencySelectLabel(currency));
       }
+      this.currencyCode =
+        selectable.find((currency) => currency.code === this.currencyCode)?.code ??
+        this.registry.getDefault().code;
       dropdown.setValue(this.currencyCode);
       dropdown.onChange((value) => {
         this.currencyCode = value;

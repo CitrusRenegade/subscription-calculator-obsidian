@@ -1,11 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { BuiltinCurrencyRegistry } from "../src/money/CurrencyRegistry";
+import {
+  BuiltinCurrencyRegistry,
+  DataBackedCurrencyRegistry,
+} from "../src/money/CurrencyRegistry";
+import {
+  getCurrencyAmountMarker,
+  getCurrencySelectLabel,
+  getCurrencyFallbackIconText,
+} from "../src/money/currencyDisplay";
+import {
+  getGraphemes,
+  normalizeCurrencyAmountMarker,
+} from "../src/money/currencyValidation";
 import { formatMoney } from "../src/money/formatMoney";
 import { parseMoneyInput } from "../src/money/parseMoneyInput";
 import { calculateTotalsByCurrency, getPerYearMinor, moneyFromMinor } from "../src/money/totals";
-import type { SubscriptionItem } from "../src/types";
+import type { CurrencyMeta, SubscriptionItem } from "../src/types";
 
 const registry = new BuiltinCurrencyRegistry();
+const customCurrency: CurrencyMeta = {
+  code: "CUSTOM_AB12CD",
+  label: "TOK",
+  amountMarker: "🪙",
+  scale: 2,
+  source: "custom",
+};
+const customRegistry = new DataBackedCurrencyRegistry(
+  () => "USD",
+  () => [customCurrency]
+);
+const highPrecisionCustomCurrency: CurrencyMeta = {
+  code: "CUSTOM_HIGH",
+  label: "TOK8",
+  amountMarker: "TOK8",
+  scale: 8,
+  source: "custom",
+};
+const highPrecisionCustomRegistry = new DataBackedCurrencyRegistry(
+  () => "USD",
+  () => [highPrecisionCustomCurrency]
+);
 
 function subscription(
   name: string,
@@ -29,6 +63,37 @@ function subscription(
 }
 
 describe("money helpers", () => {
+  it("keeps built-in currencies available", () => {
+    expect(registry.get("USD")?.label).toBe("USD");
+    expect(registry.get("JPY")?.scale).toBe(0);
+  });
+
+  it("finds custom currencies and hides internal codes from display labels", () => {
+    expect(customRegistry.get("CUSTOM_AB12CD")).toEqual(customCurrency);
+    expect(getCurrencySelectLabel(customCurrency)).toBe("TOK 🪙");
+    expect(getCurrencySelectLabel(customCurrency)).not.toContain("CUSTOM_");
+  });
+
+  it("uses label as amount marker fallback and deduplicates matching markers", () => {
+    expect(
+      getCurrencySelectLabel({
+        code: "CHF",
+        label: "CHF",
+        scale: 2,
+        source: "builtin",
+      })
+    ).toBe("CHF");
+    expect(
+      getCurrencyAmountMarker({
+        code: "CHF",
+        label: "CHF",
+        scale: 2,
+        source: "builtin",
+      })
+    ).toBe("CHF");
+    expect(getCurrencySelectLabel({ ...customCurrency, amountMarker: "TOK" })).toBe("TOK");
+  });
+
   it("parses input to minor units by currency scale", () => {
     expect(parseMoneyInput("19.99", "USD", registry)).toEqual({
       amountMinor: 1999,
@@ -39,6 +104,22 @@ describe("money helpers", () => {
       currencyCode: "JPY",
     });
     expect(parseMoneyInput("1.23", "JPY", registry)).toBeNull();
+  });
+
+  it("parses custom currency input by custom scale", () => {
+    expect(parseMoneyInput("19.99", "CUSTOM_AB12CD", customRegistry)).toEqual({
+      amountMinor: 1999,
+      currencyCode: "CUSTOM_AB12CD",
+    });
+    expect(parseMoneyInput("19.999", "CUSTOM_AB12CD", customRegistry)).toBeNull();
+  });
+
+  it("keeps legacy high-precision custom currencies parseable", () => {
+    expect(parseMoneyInput("0.00000042", "CUSTOM_HIGH", highPrecisionCustomRegistry)).toEqual({
+      amountMinor: 42,
+      currencyCode: "CUSTOM_HIGH",
+    });
+    expect(parseMoneyInput("0.000000421", "CUSTOM_HIGH", highPrecisionCustomRegistry)).toBeNull();
   });
 
   it("formats minor-unit money for display", () => {
@@ -53,6 +134,49 @@ describe("money helpers", () => {
     );
     expect(formatMoney(moneyFromMinor(2000, "USD"), registry, 1)).toMatch(
       /^20[.,]0 \$$/
+    );
+  });
+
+  it("formats custom currencies with their amount marker", () => {
+    expect(formatMoney(moneyFromMinor(1999, "CUSTOM_AB12CD"), customRegistry)).toMatch(
+      /^20 🪙$/
+    );
+  });
+
+  it("handles grapheme-based amount marker and icon text rules", () => {
+    for (const value of ["🪙", "❤️", "🇺🇦", "1️⃣"]) {
+      expect(getGraphemes(value)).toHaveLength(1);
+      expect(normalizeCurrencyAmountMarker(value)).toBe(value);
+    }
+
+    const textMarkerCurrency: CurrencyMeta = {
+      ...customCurrency,
+      label: "USDT",
+      amountMarker: "USDT",
+    };
+    expect(normalizeCurrencyAmountMarker("USDT")).toBe("USDT");
+    expect(getCurrencyFallbackIconText(textMarkerCurrency)).toBe("US");
+    expect(getCurrencyFallbackIconText({ ...customCurrency, amountMarker: "⭐" })).toBe("TO");
+    expect(getCurrencyFallbackIconText({ ...customCurrency, icon: { mode: "text", value: "⭐" } })).toBe("⭐");
+  });
+
+  it("keeps archived custom currencies resolvable for old subscriptions", () => {
+    const archivedRegistry = new DataBackedCurrencyRegistry(
+      () => "USD",
+      () => [{ ...customCurrency, isArchived: true }]
+    );
+
+    expect(archivedRegistry.listSelectable().map((currency) => currency.code)).not.toContain(
+      "CUSTOM_AB12CD"
+    );
+    expect(formatMoney(moneyFromMinor(1999, "CUSTOM_AB12CD"), archivedRegistry)).toMatch(
+      /^20 🪙$/
+    );
+  });
+
+  it("marks unknown currency formatting as a visible data problem", () => {
+    expect(formatMoney(moneyFromMinor(1999, "CUSTOM_MISSING"), customRegistry)).toBe(
+      "1 999 ?"
     );
   });
 

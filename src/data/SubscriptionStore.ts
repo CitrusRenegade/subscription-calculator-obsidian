@@ -6,6 +6,7 @@ import {
 import type {
   AddSubscriptionInput,
   BillingPeriod,
+  CurrencyMeta,
   MoneyTotal,
   PluginData,
   SubscriptionItem,
@@ -21,6 +22,10 @@ import { normalizeUrlInput } from "../icons/url";
 import { moneyToInputValue } from "../money/formatMoney";
 import { parseMoneyInput } from "../money/parseMoneyInput";
 import { calculateTotalsByCurrency } from "../money/totals";
+import {
+  type CustomCurrencyInput,
+  normalizeCustomCurrencyInput,
+} from "../money/currencyValidation";
 
 interface DisableGracePeriod {
   subscriptionId: string;
@@ -38,6 +43,21 @@ function createId(): string {
     return crypto.randomUUID();
   }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createCustomCurrencyCode(): string {
+  const bytes = new Uint8Array(4);
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    crypto.getRandomValues(bytes);
+    return `CUSTOM_${Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("").toUpperCase()}`;
+  }
+  return `CUSTOM_${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+}
+
+function normalizeCurrencyCode(code: string): string {
+  return code.trim().toUpperCase();
 }
 
 function sortByName<T extends { name: string }>(items: T[]): T[] {
@@ -109,12 +129,40 @@ export class SubscriptionStore {
   }
 
   async saveSettings(): Promise<void> {
+    this.ensureDefaultCurrencyValid();
     await this.saveData();
     this.notify();
   }
 
   private findItem(id: string): SubscriptionItem | null {
     return this.data.subscriptions.find((item) => item.id === id) ?? null;
+  }
+
+  private findCustomCurrency(code: string): CurrencyMeta | null {
+    const normalized = normalizeCurrencyCode(code);
+    return (
+      this.data.customCurrencies.find(
+        (currency) => normalizeCurrencyCode(currency.code) === normalized
+      ) ?? null
+    );
+  }
+
+  private ensureDefaultCurrencyValid(): void {
+    this.data.settings.defaultCurrency = this.currencyRegistry.getDefault().code;
+  }
+
+  private pruneUnusedArchivedCustomCurrencies(): boolean {
+    const usedCurrencyCodes = new Set(
+      this.data.subscriptions.map((item) =>
+        normalizeCurrencyCode(item.price.currencyCode)
+      )
+    );
+    const before = this.data.customCurrencies.length;
+    this.data.customCurrencies = this.data.customCurrencies.filter(
+      (currency) =>
+        !currency.isArchived || usedCurrencyCodes.has(normalizeCurrencyCode(currency.code))
+    );
+    return this.data.customCurrencies.length !== before;
   }
 
   private getEffectiveStatus(item: SubscriptionItem): "enabled" | "disabled" {
@@ -176,6 +224,97 @@ export class SubscriptionStore {
     await this.tryEnsureIcon(item);
     await this.saveData();
     this.notify();
+  }
+
+  async addCustomCurrency(input: CustomCurrencyInput): Promise<void> {
+    const normalized = normalizeCustomCurrencyInput(input);
+    if (!normalized) throw new Error("Enter valid custom currency details.");
+
+    let code = createCustomCurrencyCode();
+    while (this.currencyRegistry.get(code)) {
+      code = createCustomCurrencyCode();
+    }
+
+    this.data.customCurrencies.push({
+      code,
+      label: normalized.label,
+      amountMarker: normalized.amountMarker,
+      scale: normalized.scale,
+      source: "custom",
+    });
+
+    await this.saveData();
+    this.notify();
+  }
+
+  async cleanupUnusedArchivedCustomCurrencies(): Promise<void> {
+    this.ensureDefaultCurrencyValid();
+    const changed = this.pruneUnusedArchivedCustomCurrencies();
+    if (!changed) return;
+
+    await this.saveData();
+    this.notify();
+  }
+
+  async updateCustomCurrency(
+    code: string,
+    patch: Partial<CustomCurrencyInput>
+  ): Promise<void> {
+    const currency = this.findCustomCurrency(code);
+    if (!currency) throw new Error("Custom currency not found.");
+
+    const next = normalizeCustomCurrencyInput({
+      label: patch.label ?? currency.label,
+      amountMarker: patch.amountMarker ?? currency.amountMarker,
+      scale: patch.scale ?? currency.scale,
+    });
+    if (!next) throw new Error("Enter valid custom currency details.");
+
+    if (this.isCurrencyUsed(currency.code) && next.scale !== currency.scale) {
+      throw new Error("Price format cannot be changed while this currency is used.");
+    }
+
+    currency.label = next.label;
+    currency.amountMarker = next.amountMarker;
+    currency.scale = next.scale;
+
+    this.ensureDefaultCurrencyValid();
+    await this.saveData();
+    this.notify();
+  }
+
+  async archiveCustomCurrency(code: string): Promise<void> {
+    const currency = this.findCustomCurrency(code);
+    if (!currency) throw new Error("Custom currency not found.");
+    currency.isArchived = true;
+    this.ensureDefaultCurrencyValid();
+    this.pruneUnusedArchivedCustomCurrencies();
+    await this.saveData();
+    this.notify();
+  }
+
+  async deleteCustomCurrency(code: string): Promise<void> {
+    const currency = this.findCustomCurrency(code);
+    if (!currency) throw new Error("Custom currency not found.");
+
+    if (this.isCurrencyUsed(currency.code)) {
+      currency.isArchived = true;
+    } else {
+      this.data.customCurrencies = this.data.customCurrencies.filter(
+        (item) => normalizeCurrencyCode(item.code) !== normalizeCurrencyCode(currency.code)
+      );
+    }
+
+    this.ensureDefaultCurrencyValid();
+    await this.saveData();
+    this.notify();
+  }
+
+  isCurrencyUsed(code: string): boolean {
+    const normalized = normalizeCurrencyCode(code);
+    return this.data.subscriptions.some(
+      (item) => normalizeCurrencyCode(item.price.currencyCode) === normalized
+    );
   }
 
   async updateSubscription(
@@ -254,6 +393,7 @@ export class SubscriptionStore {
 
     item.updatedOn = todayLocalDate(this.clock);
     if (shouldRefreshIcon) await this.tryEnsureIcon(item);
+    this.pruneUnusedArchivedCustomCurrencies();
     await this.saveData();
     this.notify();
   }
@@ -309,6 +449,7 @@ export class SubscriptionStore {
     const before = this.data.subscriptions.length;
     this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
     if (this.data.subscriptions.length !== before) {
+      this.pruneUnusedArchivedCustomCurrencies();
       await this.saveData();
       this.notify();
     }

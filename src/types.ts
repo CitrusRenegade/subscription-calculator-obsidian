@@ -61,14 +61,22 @@ export interface PluginData {
   settings: PluginSettings;
   subscriptions: SubscriptionItem[];
   iconCache: Record<string, CachedIcon>;
+  customCurrencies: CurrencyMeta[];
 }
 
 export interface CurrencyMeta {
   code: string;
-  name: string;
-  symbol: string;
+  label: string;
+  amountMarker?: string;
   scale: number;
-  source: "builtin" | "generated" | "custom";
+  source: "builtin" | "custom";
+  icon?: CurrencyIconMeta;
+  isArchived?: boolean;
+}
+
+export interface CurrencyIconMeta {
+  mode: "text" | "emoji" | "lucide" | "none";
+  value?: string;
 }
 
 export interface MoneyTotal {

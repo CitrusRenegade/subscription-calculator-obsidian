@@ -10,6 +10,7 @@ import {
 import { getCurrencyIconName } from "../../icons/currencyIcon";
 import type { IconService } from "../../icons/IconService";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
+import { getCurrencyFallbackIconText } from "../../money/currencyDisplay";
 import type { SubscriptionItem, SubscriptionViewItem } from "../../types";
 import {
   createCurrencySelect,
@@ -21,7 +22,8 @@ import {
 export function renderSubscriptionIcon(
   container: HTMLElement,
   item: SubscriptionItem,
-  iconService: IconService
+  iconService: IconService,
+  registry: CurrencyRegistry
 ): void {
   const icon = container.createSpan({ cls: "subscription-calculator-icon" });
   if (item.icon.mode === "emoji" && item.icon.emoji) {
@@ -33,7 +35,19 @@ export function renderSubscriptionIcon(
     icon.createEl("img", { attr: { src: cached.dataUrl, alt: "" } });
     return;
   }
-  setIcon(icon, getCurrencyIconName(item.price.currencyCode));
+  const currency = registry.get(item.price.currencyCode);
+  if (currency?.icon?.mode === "text" || currency?.icon?.mode === "emoji") {
+    const iconText = getCurrencyFallbackIconText(currency);
+    if (iconText) {
+      icon.setText(iconText);
+      return;
+    }
+  }
+  if (currency?.source === "custom") {
+    icon.setText(getCurrencyFallbackIconText(currency) || "?");
+    return;
+  }
+  setIcon(icon, getCurrencyIconName(currency?.code ?? item.price.currencyCode));
 }
 
 function stretchPeriodSelectWhenWrapped(
@@ -143,7 +157,7 @@ export function renderSubscriptionCard(
 
   const top = card.createDiv({ cls: "subscription-calculator-card-top" });
   const title = top.createDiv({ cls: "subscription-calculator-card-title" });
-  renderSubscriptionIcon(title, item, iconService);
+  renderSubscriptionIcon(title, item, iconService, registry);
   const name = title.createSpan({
     cls: "subscription-calculator-card-name",
     text: item.name,

@@ -29,7 +29,7 @@ export function renderSubscriptionSummaryTable(
   for (const item of items) {
     const row = section.createDiv({ cls: "subscription-calculator-table-row" });
     const name = row.createDiv({ cls: "subscription-calculator-table-name" });
-    renderSubscriptionIcon(name, item, iconService);
+    renderSubscriptionIcon(name, item, iconService, registry);
     name.createSpan({ text: item.name });
     row.createDiv({
       cls: "subscription-calculator-table-money",

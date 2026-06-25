@@ -249,6 +249,10 @@
   color: var(--text-muted);
   font-size: var(--font-ui-medium);
   font-weight: 700;
+  line-height: 1;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .subscription-calculator-icon img {
@@ -500,6 +504,10 @@
 }
 
 .subscription-calculator-table-money {
+  min-width: 0;
+  max-width: 45%;
+  overflow-wrap: anywhere;
+  text-align: end;
   font-variant-numeric: tabular-nums;
 }
 
@@ -510,6 +518,57 @@
 
 .subscription-calculator-modal input {
   width: 100%;
+}
+
+.subscription-calculator-settings-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.subscription-calculator-currency-settings {
+  margin-block: 8px 14px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+}
+
+.subscription-calculator-currency-settings-title {
+  margin: 0 0 4px;
+  font-size: var(--font-ui-medium);
+}
+
+.subscription-calculator-currency-preview {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  padding: 8px 10px;
+}
+
+.subscription-calculator-currency-preview-title {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+}
+
+.subscription-calculator-currency-preview-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.subscription-calculator-currency-preview-label {
+  color: var(--text-muted);
+}
+
+.subscription-calculator-currency-preview-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 @container (max-width: 520px) {

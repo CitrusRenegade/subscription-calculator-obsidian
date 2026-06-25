@@ -17,6 +17,7 @@ import type {
 } from "../types";
 import { parseDateOnly } from "../date/dateOnly";
 import { DEFAULT_SETTINGS, createDefaultData } from "./defaultData";
+import { sanitizeCustomCurrency } from "../money/currencyValidation";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -177,6 +178,21 @@ function migrateIconCache(value: unknown): Record<string, CachedIcon> {
   return result;
 }
 
+function migrateCustomCurrencies(value: unknown): PluginData["customCurrencies"] {
+  if (!Array.isArray(value)) return [];
+  const result: PluginData["customCurrencies"] = [];
+  const seenCodes = new Set<string>();
+
+  for (const rawCurrency of value) {
+    const currency = sanitizeCustomCurrency(rawCurrency);
+    if (!currency || seenCodes.has(currency.code)) continue;
+    seenCodes.add(currency.code);
+    result.push(currency);
+  }
+
+  return result;
+}
+
 export function migratePluginData(value: unknown): PluginData {
   const raw = isRecord(value) ? value : {};
   const data = createDefaultData();
@@ -189,5 +205,6 @@ export function migratePluginData(value: unknown): PluginData {
       })
     : [];
   data.iconCache = migrateIconCache(raw.iconCache);
+  data.customCurrencies = migrateCustomCurrencies(raw.customCurrencies);
   return data;
 }

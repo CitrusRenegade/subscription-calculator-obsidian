@@ -3,7 +3,7 @@ import { VIEW_TYPE_SUBSCRIPTIONS } from "./constants";
 import { SubscriptionStore } from "./data/SubscriptionStore";
 import { migratePluginData } from "./data/migrations";
 import { IconService } from "./icons/IconService";
-import { BuiltinCurrencyRegistry } from "./money/CurrencyRegistry";
+import { DataBackedCurrencyRegistry } from "./money/CurrencyRegistry";
 import { SubscriptionSettingTab } from "./settings/SubscriptionSettingTab";
 import type { PluginData } from "./types";
 import { AddSubscriptionModal } from "./ui/AddSubscriptionModal";
@@ -11,14 +11,15 @@ import { SubscriptionsView } from "./ui/SubscriptionsView";
 
 export default class SubscriptionCalculatorPlugin extends Plugin {
   data!: PluginData;
-  currencyRegistry!: BuiltinCurrencyRegistry;
+  currencyRegistry!: DataBackedCurrencyRegistry;
   iconService!: IconService;
   store!: SubscriptionStore;
 
   async onload(): Promise<void> {
     this.data = migratePluginData(await this.loadData());
-    this.currencyRegistry = new BuiltinCurrencyRegistry(
-      this.data.settings.defaultCurrency
+    this.currencyRegistry = new DataBackedCurrencyRegistry(
+      () => this.data.settings.defaultCurrency,
+      () => this.data.customCurrencies
     );
     this.iconService = new IconService(
       this.data,
@@ -30,6 +31,7 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
       this.iconService,
       () => this.savePluginData()
     );
+    await this.store.cleanupUnusedArchivedCustomCurrencies();
 
     this.registerView(
       VIEW_TYPE_SUBSCRIPTIONS,

@@ -38,4 +38,68 @@ describe("plugin data migrations", () => {
     );
     expect(data.subscriptions[0]).not.toHaveProperty("cancelUrl");
   });
+
+  it("initializes and sanitizes custom currencies", () => {
+    expect(migratePluginData({}).customCurrencies).toEqual([]);
+
+    const data = migratePluginData({
+      customCurrencies: [
+        {
+          code: "custom_ab12cd",
+          label: "tok",
+          amountMarker: "🪙",
+          scale: 2,
+          source: "custom",
+        },
+        {
+          code: "CUSTOM_BAD",
+          label: "",
+          amountMarker: "",
+          scale: 9,
+          source: "custom",
+        },
+        {
+          code: "CUSTOM_OLD1",
+          shortName: "pts",
+          symbol: "pts",
+          scale: 0,
+          source: "custom",
+        },
+        {
+          code: "CUSTOM_HIGH",
+          label: "hi",
+          amountMarker: "hi",
+          scale: 8,
+          source: "custom",
+        },
+      ],
+    });
+
+    expect(data.customCurrencies).toEqual([
+      {
+        code: "CUSTOM_AB12CD",
+        label: "TOK",
+        amountMarker: "🪙",
+        scale: 2,
+        source: "custom",
+        isArchived: false,
+      },
+      {
+        code: "CUSTOM_OLD1",
+        label: "PTS",
+        amountMarker: "pts",
+        scale: 0,
+        source: "custom",
+        isArchived: false,
+      },
+      {
+        code: "CUSTOM_HIGH",
+        label: "HI",
+        amountMarker: "hi",
+        scale: 8,
+        source: "custom",
+        isArchived: false,
+      },
+    ]);
+  });
 });
