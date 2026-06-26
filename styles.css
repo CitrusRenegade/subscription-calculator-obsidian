@@ -504,9 +504,9 @@
 }
 
 .subscription-calculator-table-money {
-  min-width: 0;
-  max-width: 45%;
-  overflow-wrap: anywhere;
+  min-width: max-content;
+  max-width: 100%;
+  white-space: nowrap;
   text-align: end;
   font-variant-numeric: tabular-nums;
 }
