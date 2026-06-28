@@ -88,6 +88,12 @@ export class EditSubscriptionModal extends Modal {
   }
 
   private async save(): Promise<void> {
+    if (await this.saveChanges()) {
+      this.close();
+    }
+  }
+
+  private async saveChanges(): Promise<boolean> {
     try {
       await this.store.updateSubscription(this.item.id, {
         name: this.name,
@@ -98,14 +104,17 @@ export class EditSubscriptionModal extends Modal {
           emoji: this.emoji,
         },
       });
-      this.close();
+      return true;
     } catch (e) {
       new Notice(e instanceof Error ? e.message : "Failed to save subscription");
+      return false;
     }
   }
 
   private async refreshIcon(): Promise<void> {
-    await this.save();
+    const saved = await this.saveChanges();
+    if (!saved) return;
+
     const refreshed = await this.store.refreshIcon(this.item.id);
     new Notice(refreshed ? "Icon refreshed" : "No icon fetched");
   }
