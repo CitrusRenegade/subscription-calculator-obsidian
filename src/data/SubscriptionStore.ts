@@ -233,10 +233,11 @@ export class SubscriptionStore {
     }
 
     const today = todayLocalDate(this.clock);
+    const status = input.status === "disabled" ? "disabled" : "enabled";
     const item: SubscriptionItem = {
       id: createId(),
       name,
-      status: "enabled",
+      status,
       price: money,
       startDate,
       billingPeriod: input.billingPeriod,

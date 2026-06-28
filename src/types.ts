@@ -83,6 +83,7 @@ export interface AddSubscriptionInput {
   name: string;
   priceText: string;
   currencyCode: string;
+  status?: SubscriptionStatus;
   startDate?: DateOnly;
   billingPeriod: BillingPeriod;
   customBillingPeriodDays?: number;

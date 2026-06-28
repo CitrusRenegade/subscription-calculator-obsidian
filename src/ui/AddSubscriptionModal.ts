@@ -4,6 +4,7 @@ import type { SubscriptionStore } from "../data/SubscriptionStore";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
 import { getCurrencySelectLabel } from "../money/currencyDisplay";
 import type { BillingPeriod } from "../types";
+import { createToggleSwitch } from "./components/FormControls";
 
 export class AddSubscriptionModal extends Modal {
   private name = "";
@@ -13,6 +14,7 @@ export class AddSubscriptionModal extends Modal {
   private billingPeriod: BillingPeriod = "monthly";
   private customDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
   private serviceUrl = "";
+  private disabled = false;
 
   constructor(
     app: App,
@@ -100,6 +102,13 @@ export class AddSubscriptionModal extends Modal {
         })
       );
 
+    const disabledSetting = new Setting(contentEl)
+      .setName("Disabled")
+      .setDesc("Disabled subscriptions are saved but excluded from active totals.");
+    createToggleSwitch(disabledSetting.controlEl, this.disabled, (checked) => {
+      this.disabled = checked;
+    });
+
     new Setting(contentEl).addButton((button) =>
       button
         .setButtonText("Add")
@@ -119,6 +128,7 @@ export class AddSubscriptionModal extends Modal {
         customBillingPeriodDays:
           this.billingPeriod === "custom" ? this.customDays : undefined,
         serviceUrl: this.serviceUrl,
+        status: this.disabled ? "disabled" : "enabled",
       });
       this.close();
     } catch (e) {

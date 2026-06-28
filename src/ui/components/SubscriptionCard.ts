@@ -247,9 +247,9 @@ export function renderSubscriptionCard(
   if (item.effectiveStatus === "disabled") {
     card.createDiv({
       cls: "subscription-calculator-disabled-note",
-      text: item.inDisableGracePeriod
-        ? "disable grace period"
-        : `disabled on ${item.disabledOn ?? item.updatedOn}`,
+      text: item.disabledOn
+        ? `disabled on ${item.disabledOn}`
+        : "disabled",
     });
   }
 }

@@ -143,7 +143,7 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
     },
     createdOn,
     updatedOn,
-    disabledOn: status === "disabled" ? disabledOn ?? updatedOn : undefined,
+    disabledOn: status === "disabled" ? disabledOn ?? undefined : undefined,
   };
 }
 

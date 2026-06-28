@@ -39,6 +39,37 @@ describe("plugin data migrations", () => {
     expect(data.subscriptions[0]).not.toHaveProperty("cancelUrl");
   });
 
+  it("does not synthesize disabled dates during migration", () => {
+    const data = migratePluginData({
+      subscriptions: [
+        {
+          id: "paused",
+          name: "Paused",
+          status: "disabled",
+          price: { amountMinor: 999, currencyCode: "USD" },
+          billingPeriod: "monthly",
+          icon: { mode: "none" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-10",
+        },
+        {
+          id: "explicitly-disabled",
+          name: "Explicitly disabled",
+          status: "disabled",
+          price: { amountMinor: 999, currencyCode: "USD" },
+          billingPeriod: "monthly",
+          icon: { mode: "none" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-10",
+          disabledOn: "2026-06-07",
+        },
+      ],
+    });
+
+    expect(data.subscriptions[0]?.disabledOn).toBeUndefined();
+    expect(data.subscriptions[1]?.disabledOn).toBe("2026-06-07");
+  });
+
   it("initializes and sanitizes custom currencies", () => {
     expect(migratePluginData({}).customCurrencies).toEqual([]);
 
