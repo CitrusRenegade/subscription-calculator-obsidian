@@ -40,4 +40,16 @@ Your totals and next payment dates update automatically. Use the switch on a sub
 
 ## Supported currencies
 
-Subscription Calculator includes USD, EUR, RUB, GBP, CHF, and JPY. Totals are shown separately for each currency instead of relying on changing exchange rates.
+Subscription Calculator includes USD, EUR, GBP, CHF, RUB, and JPY. Totals are shown separately for each currency instead of relying on changing exchange rates.
+
+## Alternatives
+
+Options for tracking subscriptions in Obsidian are limited in convenience, and most options I found were not quite about subscription tracking: they lean toward finance history, spread subscription data across many files, or live in external spreadsheets. That gap led to this plugin. Here is what I found.
+
+**[fkonovalov/obsidian-subscription-tracker](https://github.com/fkonovalov/obsidian-subscription-tracker)** - The best option if you want subscription tracking built directly on Obsidian Bases. It is native and lightweight, with subscription notes, Bases formulas, favicon support, and multi-currency support through manually edited currency rates. The trade-off is that the workflow stays note-based: each subscription is a separate Markdown note with frontmatter.
+
+**Expense and finance trackers** - Plugins like **[lberts/personal-finance](https://github.com/lberts/personal-finance)**, **[uuq007/obsidian-cashlog](https://github.com/uuq007/obsidian-cashlog)**, **[fengshuzi/coin-memo](https://github.com/fengshuzi/coin-memo)**, and **[thekalpit/tare-money](https://github.com/thekalpit/tare-money)** are about expenses, transactions, and money history. They can include subscription payments, but they do not treat subscriptions as a separate list of services to monitor.
+
+**Ledger-based accounting tools** - **[mkshp-dev/obsidian-finance-plugin](https://github.com/mkshp-dev/obsidian-finance-plugin)** and **[bzimor/obsidian_hledger](https://github.com/bzimor/obsidian_hledger)** are built around Beancount or hledger workflows. They assume a ledger/accounting setup; Beancount Ledger also requires Python and local Beancount CLI packages. That is much broader and heavier than a lightweight subscription tracker.
+
+<ins>**Custom Bases, Dataview, spreadsheets, and CSV workflows**</ins> - A similar tracker can be assembled with Bases views, Dataview queries, spreadsheets, or CSV files. This can be flexible, but it also means maintaining your own structure, views, sorting, and manual data files instead of using a focused subscription workflow.
