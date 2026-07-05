@@ -44,7 +44,7 @@ Subscription Calculator includes USD, EUR, GBP, CHF, RUB, and JPY. Totals are sh
 
 ## Alternatives
 
-Options for tracking subscriptions in Obsidian are limited in convenience, and most options I found were not quite about subscription tracking: they lean toward finance history, spread subscription data across many files, or live in external spreadsheets. That gap led to this plugin. Here is what I found.
+Options for tracking subscriptions in Obsidian are limited in convenience, and most options were not quite about subscription tracking: they lean toward finance history, spread subscription data across many files, or live in external spreadsheets. That gap led to this plugin. Here is what I found.
 
 **[fkonovalov/obsidian-subscription-tracker](https://github.com/fkonovalov/obsidian-subscription-tracker)** - The best option if you want subscription tracking built directly on Obsidian Bases. It is native and lightweight, with subscription notes, Bases formulas, favicon support, and multi-currency support through manually edited currency rates. The trade-off is that the workflow stays note-based: each subscription is a separate Markdown note with frontmatter.
 
