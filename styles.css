@@ -177,7 +177,7 @@
 .subscription-calculator-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
@@ -219,10 +219,9 @@
 }
 
 .subscription-calculator-next-payment {
-  position: absolute;
-  z-index: 1;
-  transform: translate(-50%, -50%);
-  justify-self: center;
+  grid-column: 2;
+  grid-row: 1;
+  min-width: max-content;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   line-height: 1.15;
@@ -299,6 +298,7 @@
   height: 32px;
   padding-inline: 8px;
   font-size: inherit;
+  text-align: center;
 }
 
 .subscription-calculator-view .subscription-calculator-money-display {
@@ -308,7 +308,6 @@
   background: var(--interactive-normal);
   color: var(--text-normal);
   box-shadow: var(--input-shadow);
-  text-align: start;
 }
 
 .subscription-calculator-view .subscription-calculator-money-input[hidden],
@@ -324,54 +323,91 @@
   color: var(--text-faint);
 }
 
-.subscription-calculator-view .subscription-calculator-select {
+.subscription-calculator-select-field {
+  position: relative;
+  display: inline-grid;
   box-sizing: border-box;
-  width: min(
-    100%,
-    clamp(
-      calc(var(--subscription-field-min-ch, 5) * 1ch + 2.8em),
-      calc(var(--subscription-field-ch, 6) * 1ch + 2.8em),
-      calc(var(--subscription-field-max-ch, 10) * 1ch + 2.8em)
-    )
-  );
-  min-width: 0;
   max-width: 100%;
+  align-items: center;
+  justify-items: center;
   flex: 0 1 auto;
   height: 32px;
-  padding-inline: 8px 22px;
-  field-sizing: content;
+  padding-inline: 10px;
+  border: var(--input-border-width) solid var(--background-modifier-border);
+  border-radius: var(--input-radius);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  box-shadow: var(--input-shadow);
   font-size: var(--font-ui-small);
 }
 
-.subscription-calculator-period-select.is-row-fill {
-  width: min(100%, var(--subscription-period-row-width, 100%));
-  flex-basis: min(100%, var(--subscription-period-row-width, 100%));
+.subscription-calculator-select-field:hover {
+  background: var(--interactive-hover);
+}
+
+.subscription-calculator-select-display {
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subscription-calculator-currency-field {
+  min-width: calc(4ch + 2em);
+}
+
+.subscription-calculator-currency-field .subscription-calculator-select-display {
+  min-width: 4ch;
+}
+
+.subscription-calculator-period-field {
+  min-width: calc(5ch + 2em);
+}
+
+.subscription-calculator-period-field .subscription-calculator-select-display {
+  min-width: 5ch;
+}
+
+.subscription-calculator-view .subscription-calculator-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .subscription-calculator-view .subscription-calculator-custom-days {
   box-sizing: border-box;
-  width: min(100%, 8ch);
-  min-width: 0;
+  width: auto;
+  min-width: calc(2ch + 2em);
   max-width: 100%;
   flex: 0 1 auto;
   height: 32px;
-  padding-inline: 8px;
+  padding-inline: 10px;
   field-sizing: content;
   font-size: var(--font-ui-small);
+  text-align: center;
 }
 
 .subscription-calculator-view .subscription-calculator-money-input:focus,
 .subscription-calculator-view .subscription-calculator-money-input:focus-visible,
-.subscription-calculator-view .subscription-calculator-select:focus,
-.subscription-calculator-view .subscription-calculator-select:focus-visible,
 .subscription-calculator-view .subscription-calculator-custom-days:focus,
 .subscription-calculator-view .subscription-calculator-custom-days:focus-visible {
   border: 1px solid var(--background-modifier-border);
   box-shadow: none;
 }
 
+.subscription-calculator-select-field:focus-within {
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+}
+
 .subscription-calculator-card-actions {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   display: flex;
   align-items: center;
@@ -397,17 +433,17 @@
   white-space: nowrap;
 }
 
-.subscription-calculator-card.is-next-payment-wrapped
-  .subscription-calculator-next-payment {
-  position: static;
-  grid-column: 1 / -1;
-  grid-row: 2;
-  transform: none;
-}
+@container (max-width: 480px) {
+  .subscription-calculator-card.has-next-payment
+    .subscription-calculator-next-payment {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 
-.subscription-calculator-card.is-next-payment-wrapped
-  .subscription-calculator-card-controls {
-  grid-row: 3;
+  .subscription-calculator-card.has-next-payment
+    .subscription-calculator-card-controls {
+    grid-row: 3;
+  }
 }
 
 .subscription-calculator-toggle {

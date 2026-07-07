@@ -43,98 +43,6 @@ export function renderSubscriptionIcon(
   setIcon(icon, getCurrencyIconName(currency?.code ?? item.price.currencyCode));
 }
 
-function stretchPeriodSelectWhenWrapped(
-  controls: HTMLElement,
-  periodSelect: HTMLSelectElement
-): void {
-  let resizeObserver: ResizeObserver | null = null;
-  const sync = () => {
-    window.requestAnimationFrame(() => {
-      if (!controls.isConnected) {
-        resizeObserver?.disconnect();
-        resizeObserver = null;
-        return;
-      }
-
-      const firstControl = controls.firstElementChild as HTMLElement | null;
-      const controlsBeforePeriod = Array.from(controls.children)
-        .slice(0, Array.from(controls.children).indexOf(periodSelect))
-        .filter((element): element is HTMLElement => element.instanceOf(HTMLElement));
-      periodSelect.classList.remove("is-row-fill");
-      periodSelect.style.removeProperty("--subscription-period-row-width");
-
-      const shouldFillRow = Boolean(firstControl && periodSelect.offsetTop > firstControl.offsetTop);
-      if (!shouldFillRow) return;
-
-      const rows = new Map<number, { left: number; right: number }>();
-      for (const control of controlsBeforePeriod) {
-        const rect = control.getBoundingClientRect();
-        const row = rows.get(control.offsetTop);
-        rows.set(control.offsetTop, {
-          left: row ? Math.min(row.left, rect.left) : rect.left,
-          right: row ? Math.max(row.right, rect.right) : rect.right,
-        });
-      }
-
-      const rowWidth = Math.max(
-        ...Array.from(rows.values()).map((row) => row.right - row.left),
-        periodSelect.getBoundingClientRect().width
-      );
-
-      periodSelect.style.setProperty("--subscription-period-row-width", `${Math.ceil(rowWidth)}px`);
-      periodSelect.classList.add("is-row-fill");
-    });
-  };
-
-  if (typeof ResizeObserver !== "undefined") {
-    resizeObserver = new ResizeObserver(sync);
-    resizeObserver.observe(controls);
-  }
-  sync();
-}
-
-function wrapNextPaymentOnCollision(
-  card: HTMLElement,
-  name: HTMLElement,
-  actions: HTMLElement,
-  nextPayment: HTMLElement
-): void {
-  let resizeObserver: ResizeObserver | null = null;
-  const sync = () => {
-    window.requestAnimationFrame(() => {
-      if (!card.isConnected) {
-        resizeObserver?.disconnect();
-        resizeObserver = null;
-        return;
-      }
-
-      const nameRect = name.getBoundingClientRect();
-      const actionsRect = actions.getBoundingClientRect();
-      const availableWidth = actionsRect.left - nameRect.right;
-      const shouldWrap = nextPayment.scrollWidth > availableWidth;
-
-      card.classList.toggle("is-next-payment-wrapped", shouldWrap);
-      if (shouldWrap) {
-        nextPayment.style.removeProperty("left");
-        nextPayment.style.removeProperty("top");
-        return;
-      }
-
-      const cardRect = card.getBoundingClientRect();
-      nextPayment.style.left = `${(nameRect.right + actionsRect.left) / 2 - cardRect.left}px`;
-      nextPayment.style.top = `${
-        (actionsRect.top + actionsRect.bottom) / 2 - cardRect.top
-      }px`;
-    });
-  };
-
-  if (typeof ResizeObserver !== "undefined") {
-    resizeObserver = new ResizeObserver(sync);
-    resizeObserver.observe(card);
-  }
-  sync();
-}
-
 export function renderSubscriptionCard(
   container: HTMLElement,
   item: SubscriptionViewItem,
@@ -151,11 +59,10 @@ export function renderSubscriptionCard(
   const top = card.createDiv({ cls: "subscription-calculator-card-top" });
   const title = top.createDiv({ cls: "subscription-calculator-card-title" });
   renderSubscriptionIcon(title, item, iconService, registry);
-  const name = title.createSpan({
+  title.createSpan({
     cls: "subscription-calculator-card-name",
     text: item.name,
   });
-  let nextPaymentLabel: HTMLElement | null = null;
   if (item.effectiveStatus === "enabled") {
     const today = todayLocalDate();
     const nextPayment = getNextPaymentDate(
@@ -165,7 +72,8 @@ export function renderSubscriptionCard(
       item.customBillingPeriodDays
     );
     if (nextPayment) {
-      nextPaymentLabel = card.createSpan({
+      card.classList.add("has-next-payment");
+      card.createSpan({
         cls: "subscription-calculator-next-payment",
         text: formatPaymentCountdown(getDaysUntil(nextPayment, today)),
         attr: { title: `Next payment: ${nextPayment}` },
@@ -194,10 +102,6 @@ export function renderSubscriptionCard(
     (enabled) => void store.setSubscriptionEnabled(item.id, enabled)
   );
 
-  if (nextPaymentLabel) {
-    wrapNextPaymentOnCollision(card, name, actions, nextPaymentLabel);
-  }
-
   const controls = card.createDiv({ cls: "subscription-calculator-card-controls" });
   createMoneyInput(controls, item.price, registry, (priceText) => {
     void store
@@ -215,12 +119,11 @@ export function renderSubscriptionCard(
       })
       .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update currency"));
   });
-  const periodSelect = createPeriodSelect(controls, item.billingPeriod, (billingPeriod) => {
+  createPeriodSelect(controls, item.billingPeriod, (billingPeriod) => {
     void store
       .updateSubscription(item.id, { billingPeriod })
       .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update period"));
   });
-  stretchPeriodSelectWhenWrapped(controls, periodSelect);
 
   if (item.billingPeriod === "custom") {
     const customInput = controls.createEl("input", {

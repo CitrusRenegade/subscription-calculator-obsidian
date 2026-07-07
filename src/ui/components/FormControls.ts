@@ -17,8 +17,28 @@ function setFieldTextWidth(element: HTMLElement, text: string, minCh: number, ma
   element.style.setProperty("--subscription-field-max-ch", String(maxCh));
 }
 
-function updateSelectTextWidth(select: HTMLSelectElement, minCh: number, maxCh: number): void {
-  setFieldTextWidth(select, select.selectedOptions[0]?.text ?? select.value, minCh, maxCh);
+function createSelectField(
+  container: HTMLElement,
+  fieldClass: string,
+  selectClass: string
+): { display: HTMLElement; select: HTMLSelectElement } {
+  const field = container.createSpan({
+    cls: `subscription-calculator-select-field ${fieldClass}`,
+  });
+  const display = field.createSpan({
+    cls: "subscription-calculator-select-display",
+    attr: { "aria-hidden": "true" },
+  });
+  const select = field.createEl("select", {
+    cls: `subscription-calculator-select ${selectClass}`,
+  });
+  return { display, select };
+}
+
+function updateSelectDisplay(select: HTMLSelectElement, display: HTMLElement): void {
+  const text = select.selectedOptions[0]?.text ?? select.value;
+  display.setText(text);
+  select.setAttribute("aria-label", text);
 }
 
 export function createMoneyInput(
@@ -86,9 +106,11 @@ export function createCurrencySelect(
   selectedCode: string,
   onChange: (currencyCode: string) => void
 ): HTMLSelectElement {
-  const select = container.createEl("select", {
-    cls: "subscription-calculator-select",
-  });
+  const { display, select } = createSelectField(
+    container,
+    "subscription-calculator-currency-field",
+    "subscription-calculator-currency-select"
+  );
   const selectable = registry.listSelectable();
   const selectedCurrency = registry.get(selectedCode);
   if (
@@ -109,9 +131,9 @@ export function createCurrencySelect(
     });
     option.selected = currency.code === selectedCode;
   }
-  updateSelectTextWidth(select, 5, 10);
+  updateSelectDisplay(select, display);
   select.addEventListener("change", () => {
-    updateSelectTextWidth(select, 5, 10);
+    updateSelectDisplay(select, display);
     onChange(select.value);
   });
   return select;
@@ -122,9 +144,11 @@ export function createPeriodSelect(
   selectedPeriod: BillingPeriod,
   onChange: (period: BillingPeriod) => void
 ): HTMLSelectElement {
-  const select = container.createEl("select", {
-    cls: "subscription-calculator-select subscription-calculator-period-select",
-  });
+  const { display, select } = createSelectField(
+    container,
+    "subscription-calculator-period-field",
+    "subscription-calculator-period-select"
+  );
   for (const [period, label] of Object.entries(PERIOD_LABELS)) {
     const option = select.createEl("option", {
       text: label,
@@ -132,9 +156,9 @@ export function createPeriodSelect(
     });
     option.selected = period === selectedPeriod;
   }
-  updateSelectTextWidth(select, 5, 10);
+  updateSelectDisplay(select, display);
   select.addEventListener("change", () => {
-    updateSelectTextWidth(select, 5, 10);
+    updateSelectDisplay(select, display);
     onChange(select.value as BillingPeriod);
   });
   return select;
