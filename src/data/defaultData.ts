@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   faviconProvider: "google-s2",
   confirmBeforeDelete: true,
   moneyDisplayPrecision: 0,
+  floatingYearlyTotal: false,
   sortMode: "alphabetical",
   sortDirection: "ascending",
 };

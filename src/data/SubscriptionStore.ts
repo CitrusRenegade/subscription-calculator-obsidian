@@ -32,6 +32,7 @@ import {
 interface DisableGracePeriod {
   subscriptionId: string;
   timeoutId: number;
+  version: number;
 }
 
 export interface IconRefreshSummary {
@@ -85,6 +86,7 @@ function isMvpCurrencyScale(value: number): boolean {
 export class SubscriptionStore {
   private readonly listeners = new Set<() => void>();
   private readonly disableGracePeriods = new Map<string, DisableGracePeriod>();
+  private readonly disableGraceVersions = new Map<string, number>();
 
   constructor(
     private readonly data: PluginData,
@@ -104,17 +106,39 @@ export class SubscriptionStore {
       window.clearTimeout(gracePeriod.timeoutId);
     }
     this.disableGracePeriods.clear();
+    this.disableGraceVersions.clear();
     this.listeners.clear();
   }
 
   async flushDisableGracePeriods(): Promise<void> {
     if (!this.disableGracePeriods.size) return;
 
-    for (const gracePeriod of this.disableGracePeriods.values()) {
+    const pendingGracePeriods = Array.from(this.disableGracePeriods.values());
+    const previousStates = new Map(
+      pendingGracePeriods.flatMap((gracePeriod) => {
+        const item = this.findItem(gracePeriod.subscriptionId);
+        return item
+          ? [
+              [
+                gracePeriod.subscriptionId,
+                {
+                  status: item.status,
+                  disabledOn: item.disabledOn,
+                  updatedOn: item.updatedOn,
+                },
+              ] as const,
+            ]
+          : [];
+      })
+    );
+
+    for (const gracePeriod of pendingGracePeriods) {
       window.clearTimeout(gracePeriod.timeoutId);
     }
 
-    const subscriptionIds = Array.from(this.disableGracePeriods.keys());
+    const subscriptionIds = pendingGracePeriods.map(
+      (gracePeriod) => gracePeriod.subscriptionId
+    );
     this.disableGracePeriods.clear();
 
     let changed = false;
@@ -123,7 +147,22 @@ export class SubscriptionStore {
     }
 
     if (changed) {
-      await this.saveData();
+      try {
+        await this.saveData();
+      } catch (error) {
+        for (const gracePeriod of pendingGracePeriods) {
+          const { subscriptionId: id, version } = gracePeriod;
+          if (this.disableGraceVersions.get(id) !== version) continue;
+
+          const previous = previousStates.get(id);
+          const item = this.findItem(id);
+          if (item && previous) Object.assign(item, previous);
+          if (item?.status === "enabled") {
+            this.scheduleDisableGracePeriod(id, version);
+          }
+        }
+        throw error;
+      }
       this.notify();
     }
   }
@@ -455,6 +494,7 @@ export class SubscriptionStore {
     if (enabled) {
       const gracePeriod = this.disableGracePeriods.get(id);
       if (gracePeriod) {
+        this.nextDisableGraceVersion(id);
         window.clearTimeout(gracePeriod.timeoutId);
         this.disableGracePeriods.delete(id);
         this.notify();
@@ -462,6 +502,7 @@ export class SubscriptionStore {
       }
 
       if (item.status === "disabled") {
+        this.nextDisableGraceVersion(id);
         item.status = "enabled";
         item.disabledOn = undefined;
         item.updatedOn = todayLocalDate(this.clock);
@@ -473,7 +514,19 @@ export class SubscriptionStore {
 
     if (item.status === "disabled" || this.disableGracePeriods.has(id)) return;
 
+    this.scheduleDisableGracePeriod(id, this.nextDisableGraceVersion(id));
+    this.notify();
+  }
+
+  private nextDisableGraceVersion(id: string): number {
+    const nextVersion = (this.disableGraceVersions.get(id) ?? 0) + 1;
+    this.disableGraceVersions.set(id, nextVersion);
+    return nextVersion;
+  }
+
+  private scheduleDisableGracePeriod(id: string, version: number): void {
     const timeoutId = window.setTimeout(() => {
+      if (this.disableGracePeriods.get(id)?.version !== version) return;
       this.disableGracePeriods.delete(id);
       if (!this.disableSubscriptionNow(id)) {
         this.notify();
@@ -486,8 +539,7 @@ export class SubscriptionStore {
       this.notify();
     }, DISABLE_GRACE_PERIOD_MS);
 
-    this.disableGracePeriods.set(id, { subscriptionId: id, timeoutId });
-    this.notify();
+    this.disableGracePeriods.set(id, { subscriptionId: id, timeoutId, version });
   }
 
   async deleteSubscription(id: string): Promise<void> {
@@ -496,6 +548,7 @@ export class SubscriptionStore {
       window.clearTimeout(gracePeriod.timeoutId);
       this.disableGracePeriods.delete(id);
     }
+    this.disableGraceVersions.delete(id);
     const before = this.data.subscriptions.length;
     this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
     if (this.data.subscriptions.length !== before) {

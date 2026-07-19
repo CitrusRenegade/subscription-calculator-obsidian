@@ -3,6 +3,18 @@ import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
 import { migratePluginData } from "../src/data/migrations";
 
 describe("plugin data migrations", () => {
+  it("OBS-36 defaults the floating yearly total to off and preserves explicit choices", () => {
+    expect(migratePluginData({}).settings.floatingYearlyTotal).toBe(false);
+    expect(
+      migratePluginData({ settings: { floatingYearlyTotal: true } }).settings
+        .floatingYearlyTotal
+    ).toBe(true);
+    expect(
+      migratePluginData({ settings: { floatingYearlyTotal: "yes" } }).settings
+        .floatingYearlyTotal
+    ).toBe(false);
+  });
+
   it("defaults display precision to whole numbers and preserves tenths", () => {
     expect(migratePluginData({}).settings.moneyDisplayPrecision).toBe(0);
     expect(
@@ -154,5 +166,54 @@ describe("plugin data migrations", () => {
         isArchived: false,
       },
     ]);
+  });
+
+  it("drops subscriptions that violate persisted-data invariants", () => {
+    const data = migratePluginData({
+      subscriptions: [
+        {
+          id: "duplicate",
+          name: "First",
+          status: "enabled",
+          price: { amountMinor: 100, currencyCode: "USD" },
+          billingPeriod: "monthly",
+          icon: { mode: "none" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-01",
+        },
+        {
+          id: "duplicate",
+          name: "Second",
+          status: "enabled",
+          price: { amountMinor: 100, currencyCode: "USD" },
+          billingPeriod: "monthly",
+          icon: { mode: "none" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-01",
+        },
+        {
+          id: "negative",
+          name: "Negative",
+          status: "enabled",
+          price: { amountMinor: -1, currencyCode: "USD" },
+          billingPeriod: "monthly",
+          icon: { mode: "none" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-01",
+        },
+        {
+          id: "unknown-currency",
+          name: "Unknown currency",
+          status: "enabled",
+          price: { amountMinor: 100, currencyCode: "GHOST" },
+          billingPeriod: "monthly",
+          icon: { mode: "none" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-01",
+        },
+      ],
+    });
+
+    expect(data.subscriptions.map((item) => item.id)).toEqual(["duplicate"]);
   });
 });

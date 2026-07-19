@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SubscriptionViewItem } from "../src/types";
-import { sortSubscriptions } from "../src/ui/subscriptionSort";
+import { getSortStateFromSettings, sortSubscriptions } from "../src/ui/subscriptionSort";
 
 function item(
   name: string,
@@ -23,6 +23,18 @@ function item(
 }
 
 describe("sortSubscriptions", () => {
+  it("resyncs an active view's sort state from restored settings after a store notification", () => {
+    const restored = getSortStateFromSettings({
+      sortMode: "status",
+      sortDirection: "ascending",
+    });
+
+    expect(restored).toEqual({
+      sortMode: "status",
+      sortDirection: "ascending",
+    });
+  });
+
   it("sorts cards alphabetically", () => {
     const result = sortSubscriptions(
       [item("Zoom", "enabled"), item("Adobe", "disabled")],

@@ -15,6 +15,7 @@ export interface PluginSettings {
   faviconProvider: FaviconProvider;
   confirmBeforeDelete: boolean;
   moneyDisplayPrecision: MoneyDisplayPrecision;
+  floatingYearlyTotal: boolean;
   sortMode: SubscriptionSortMode;
   sortDirection: SubscriptionSortDirection;
 }

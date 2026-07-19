@@ -1,10 +1,20 @@
 import { todayLocalDate } from "../date/dateOnly";
 import { getNextPaymentDate } from "../date/paymentSchedule";
 import type {
+  PluginSettings,
   SubscriptionSortDirection,
   SubscriptionSortMode,
   SubscriptionViewItem,
 } from "../types";
+
+export function getSortStateFromSettings(
+  settings: Pick<PluginSettings, "sortMode" | "sortDirection">
+): { sortMode: SubscriptionSortMode; sortDirection: SubscriptionSortDirection } {
+  return {
+    sortMode: settings.sortMode,
+    sortDirection: settings.sortDirection,
+  };
+}
 
 export function sortSubscriptions(
   items: SubscriptionViewItem[],

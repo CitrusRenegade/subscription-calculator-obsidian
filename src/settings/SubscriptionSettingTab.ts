@@ -24,6 +24,27 @@ function getPreviewAmountText(scale: number): string {
   return (0.01).toFixed(scale);
 }
 
+function backupFilename(): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `subscription-calculator-backup-${timestamp}.json`;
+}
+
+function downloadJson(document: Document, filename: string, contents: string): void {
+  const view = document.defaultView;
+  if (!view) throw new Error("Unable to download backup from this window.");
+
+  const blob = new view.Blob([contents], { type: "application/json" });
+  const url = view.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
+}
+
 export class SubscriptionSettingTab extends PluginSettingTab {
   constructor(app: App, private readonly plugin: SubscriptionCalculatorPlugin) {
     super(app, plugin);
@@ -74,6 +95,18 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           .setValue(this.plugin.data.settings.moneyDisplayPrecision === 1)
           .onChange(async (value) => {
             this.plugin.data.settings.moneyDisplayPrecision = value ? 1 : 0;
+            await this.plugin.store.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Total position")
+      .setDesc("Off: top (default). On: bottom.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.data.settings.floatingYearlyTotal)
+          .onChange(async (value) => {
+            this.plugin.data.settings.floatingYearlyTotal = value;
             await this.plugin.store.saveSettings();
           })
       );
@@ -130,7 +163,83 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl).setName("Backup and restore").setHeading();
+    new Setting(containerEl)
+      .setName("Export backup")
+      .setDesc("Downloads settings, subscriptions, and custom currencies. Favicons are excluded.")
+      .addButton((button) =>
+        button.setButtonText("Export JSON").onClick(() => {
+          try {
+            downloadJson(
+              containerEl.ownerDocument,
+              backupFilename(),
+              this.plugin.exportBackupJson()
+            );
+            new Notice("Backup downloaded");
+          } catch (error) {
+            console.error("Failed to export backup:", error);
+            new Notice("Failed to download backup");
+          }
+        })
+      );
+    new Setting(containerEl)
+      .setName("Restore backup")
+      .setDesc(
+        "Replaces current settings, subscriptions, and custom currencies. It does not add or merge records."
+      )
+      .addButton((button) => {
+        button.buttonEl.addClass("mod-warning");
+        button.setButtonText("Restore JSON").onClick(() => {
+          const input = containerEl.ownerDocument.createElement("input");
+          input.type = "file";
+          input.accept = "application/json,.json";
+          input.addEventListener("change", () => {
+            const file = input.files?.[0];
+            if (file) void this.restoreBackupFile(file, button);
+          });
+          input.click();
+        });
+      });
+
     this.renderCustomCurrenciesSection(containerEl);
+  }
+
+  private async restoreBackupFile(file: File, button: ButtonComponent): Promise<void> {
+    let contents: string;
+    try {
+      contents = await file.text();
+    } catch (error) {
+      console.error("Failed to read backup file:", error);
+      new Notice(error instanceof Error ? error.message : "Failed to read backup file");
+      return;
+    }
+
+    button.setDisabled(true).setButtonText("Restoring…");
+    try {
+      const report = await this.plugin.restoreBackupJson(
+        contents,
+        (preview) => {
+          const window = this.containerEl.ownerDocument.defaultView;
+          const message = [
+            "Restore this backup?",
+            "Replaces current settings, subscriptions, and custom currencies. It does not add or merge records.",
+            `Subscriptions: ${preview.subscriptions.imported} imported, ${preview.subscriptions.skipped} skipped.`,
+            `Custom currencies: ${preview.customCurrencies.imported} imported, ${preview.customCurrencies.skipped} skipped.`,
+          ].join("\n\n");
+          return window?.confirm(message) ?? false;
+        }
+      );
+      if (!report) return;
+      new Notice(
+        `Backup restored: ${report.subscriptions.imported} subscriptions and ${report.customCurrencies.imported} custom currencies imported; ${report.subscriptions.skipped + report.customCurrencies.skipped} records skipped.`
+      );
+      this.renderContents();
+    } catch (error) {
+      console.error("Failed to restore backup:", error);
+      new Notice(error instanceof Error ? error.message : "Failed to restore backup");
+    } finally {
+      button.setButtonText("Restore JSON").setDisabled(false);
+    }
   }
 
   private renderCustomCurrenciesSection(containerEl: HTMLElement): void {

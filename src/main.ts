@@ -1,6 +1,11 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { VIEW_TYPE_SUBSCRIPTIONS } from "./constants";
 import { SubscriptionStore } from "./data/SubscriptionStore";
+import {
+  createBackup,
+  restoreBackupData,
+  type BackupImportReport,
+} from "./data/backup";
 import { migratePluginData } from "./data/migrations";
 import { IconService } from "./icons/IconService";
 import { DataBackedCurrencyRegistry } from "./money/CurrencyRegistry";
@@ -84,6 +89,22 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
 
   async savePluginData(): Promise<void> {
     await this.saveData(this.data);
+  }
+
+  exportBackupJson(): string {
+    return JSON.stringify(createBackup(this.data), null, 2);
+  }
+
+  async restoreBackupJson(
+    text: string,
+    confirmRestore: (report: BackupImportReport) => boolean
+  ): Promise<BackupImportReport | null> {
+    return restoreBackupData(this.data, text, {
+      confirm: confirmRestore,
+      flush: () => this.store.flushDisableGracePeriods(),
+      save: () => this.savePluginData(),
+      notify: () => this.store.notify(),
+    });
   }
 
   async openAddSubscriptionModal(): Promise<void> {

@@ -18,6 +18,7 @@ import type {
 import { parseDateOnly } from "../date/dateOnly";
 import { DEFAULT_SETTINGS, createDefaultData } from "./defaultData";
 import { sanitizeCustomCurrency } from "../money/currencyValidation";
+import { BUILTIN_CURRENCIES } from "../money/currencies";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -95,6 +96,10 @@ function migrateSettings(value: unknown): PluginSettings {
       DEFAULT_SETTINGS.confirmBeforeDelete
     ),
     moneyDisplayPrecision: asMoneyDisplayPrecision(raw.moneyDisplayPrecision),
+    floatingYearlyTotal: asBoolean(
+      raw.floatingYearlyTotal,
+      DEFAULT_SETTINGS.floatingYearlyTotal
+    ),
     sortMode: asSortMode(raw.sortMode),
     sortDirection: asSortDirection(raw.sortDirection),
   };
@@ -193,18 +198,41 @@ function migrateCustomCurrencies(value: unknown): PluginData["customCurrencies"]
   return result;
 }
 
+function migrateSubscriptions(
+  value: unknown,
+  validCurrencyCodes: ReadonlySet<string>
+): SubscriptionItem[] {
+  if (!Array.isArray(value)) return [];
+
+  const seenIds = new Set<string>();
+  const result: SubscriptionItem[] = [];
+  for (const item of value) {
+    const migrated = migrateSubscription(item);
+    if (
+      migrated === null ||
+      migrated.price.amountMinor < 0 ||
+      !validCurrencyCodes.has(migrated.price.currencyCode) ||
+      seenIds.has(migrated.id)
+    ) {
+      continue;
+    }
+
+    seenIds.add(migrated.id);
+    result.push(migrated);
+  }
+  return result;
+}
+
 export function migratePluginData(value: unknown): PluginData {
   const raw = isRecord(value) ? value : {};
   const data = createDefaultData();
   data.schemaVersion = SCHEMA_VERSION;
   data.settings = migrateSettings(raw.settings);
-  data.subscriptions = Array.isArray(raw.subscriptions)
-    ? raw.subscriptions.flatMap((item) => {
-        const migrated = migrateSubscription(item);
-        return migrated ? [migrated] : [];
-      })
-    : [];
-  data.iconCache = migrateIconCache(raw.iconCache);
   data.customCurrencies = migrateCustomCurrencies(raw.customCurrencies);
+  const validCurrencyCodes = new Set(
+    [...BUILTIN_CURRENCIES, ...data.customCurrencies].map((currency) => currency.code)
+  );
+  data.subscriptions = migrateSubscriptions(raw.subscriptions, validCurrencyCodes);
+  data.iconCache = migrateIconCache(raw.iconCache);
   return data;
 }
