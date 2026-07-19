@@ -1,5 +1,6 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Setting } from "obsidian";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
+import { getOpenableServiceUrl } from "../icons/url";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
 import type { IconMode, SubscriptionItem } from "../types";
 
@@ -36,11 +37,25 @@ export class EditSubscriptionModal extends Modal {
       })
     );
 
-    new Setting(contentEl).setName("Service URL").addText((text) =>
-      text.setValue(this.serviceUrl).onChange((value) => {
-        this.serviceUrl = value;
-      })
-    );
+    let openUrlButton: ButtonComponent | undefined;
+    const serviceUrlSetting = new Setting(contentEl)
+      .setName("Service URL")
+      .addText((text) =>
+        text.setValue(this.serviceUrl).onChange((value) => {
+          this.serviceUrl = value;
+          openUrlButton?.setDisabled(!getOpenableServiceUrl(value));
+        })
+      )
+      .addButton((button) => {
+        openUrlButton = button
+          .setButtonText("Open URL")
+          .setDisabled(!getOpenableServiceUrl(this.serviceUrl))
+          .onClick(() => {
+            const url = getOpenableServiceUrl(this.serviceUrl);
+            if (url) window.open(url, "_blank");
+          });
+      });
+    serviceUrlSetting.settingEl.addClass("subscription-calculator-service-url-setting");
 
     new Setting(contentEl)
       .setName("Start date")

@@ -12,6 +12,7 @@ import type { IconService } from "../../icons/IconService";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
 import { getCurrencyFallbackIconText } from "../../money/currencyDisplay";
 import type { SubscriptionItem, SubscriptionViewItem } from "../../types";
+import { getNextPaymentLayout } from "../subscriptionCardLayout";
 import {
   createCurrencySelect,
   createMoneyInput,
@@ -43,6 +44,54 @@ export function renderSubscriptionIcon(
   setIcon(icon, getCurrencyIconName(currency?.code ?? item.price.currencyCode));
 }
 
+function wrapNextPaymentOnCollision(
+  card: HTMLElement,
+  name: HTMLElement,
+  actions: HTMLElement,
+  nextPayment: HTMLElement
+): void {
+  const cardWindow = card.ownerDocument.defaultView;
+  if (cardWindow === null) return;
+
+  let resizeObserver: ResizeObserver | null = null;
+  const sync = () => {
+    cardWindow.requestAnimationFrame(() => {
+      if (!card.isConnected) {
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        return;
+      }
+
+      const cardRect = card.getBoundingClientRect();
+      const nameRect = name.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      const layout = getNextPaymentLayout({
+        cardLeft: cardRect.left,
+        cardTop: cardRect.top,
+        nameRight: nameRect.right,
+        actionsLeft: actionsRect.left,
+        actionsTop: actionsRect.top,
+        actionsBottom: actionsRect.bottom,
+        countdownWidth: nextPayment.scrollWidth,
+      });
+
+      card.classList.toggle("is-next-payment-wrapped", layout.wrapped);
+      if (layout.wrapped) {
+        nextPayment.style.removeProperty("left");
+        nextPayment.style.removeProperty("top");
+        return;
+      }
+
+      nextPayment.style.left = `${layout.left}px`;
+      nextPayment.style.top = `${layout.top}px`;
+    });
+  };
+
+  resizeObserver = new cardWindow.ResizeObserver(sync);
+  resizeObserver.observe(card);
+  sync();
+}
+
 export function renderSubscriptionCard(
   container: HTMLElement,
   item: SubscriptionViewItem,
@@ -59,10 +108,11 @@ export function renderSubscriptionCard(
   const top = card.createDiv({ cls: "subscription-calculator-card-top" });
   const title = top.createDiv({ cls: "subscription-calculator-card-title" });
   renderSubscriptionIcon(title, item, iconService, registry);
-  title.createSpan({
+  const name = title.createSpan({
     cls: "subscription-calculator-card-name",
     text: item.name,
   });
+  let nextPaymentLabel: HTMLElement | null = null;
   if (item.effectiveStatus === "enabled") {
     const today = todayLocalDate();
     const nextPayment = getNextPaymentDate(
@@ -72,8 +122,7 @@ export function renderSubscriptionCard(
       item.customBillingPeriodDays
     );
     if (nextPayment) {
-      card.classList.add("has-next-payment");
-      card.createSpan({
+      nextPaymentLabel = card.createSpan({
         cls: "subscription-calculator-next-payment",
         text: formatPaymentCountdown(getDaysUntil(nextPayment, today)),
         attr: { title: `Next payment: ${nextPayment}` },
@@ -101,6 +150,10 @@ export function renderSubscriptionCard(
     item.effectiveStatus === "enabled",
     (enabled) => void store.setSubscriptionEnabled(item.id, enabled)
   );
+
+  if (nextPaymentLabel) {
+    wrapNextPaymentOnCollision(card, name, actions, nextPaymentLabel);
+  }
 
   const controls = card.createDiv({ cls: "subscription-calculator-card-controls" });
   createMoneyInput(controls, item.price, registry, (priceText) => {

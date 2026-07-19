@@ -1,6 +1,7 @@
 .view-content.subscription-calculator-view {
   --subscription-card-radius: 8px;
   --subscription-calculator-overlay-height: 0px;
+  --subscription-calculator-sheet-height: 0px;
   container-type: inline-size;
   padding: 0;
   overflow-x: hidden;
@@ -10,6 +11,7 @@
 
 .subscription-calculator-view-body {
   padding: 16px;
+  padding-bottom: calc(16px + var(--subscription-calculator-sheet-height));
 }
 
 .subscription-calculator-summary {
@@ -79,9 +81,16 @@
 .subscription-calculator-summary-overlay {
   position: sticky;
   z-index: 10;
-  top: 0;
   height: 0;
   pointer-events: none;
+}
+
+.subscription-calculator-summary-overlay.is-top {
+  top: 0;
+}
+
+.subscription-calculator-summary-overlay.is-bottom {
+  top: 100%;
 }
 
 .subscription-calculator-summary-floating {
@@ -91,12 +100,9 @@
   width: 100%;
   max-block-size: min(40vh, 12rem);
   align-items: center;
-  top: 0;
-  left: 0;
   gap: 8px;
   margin: 0;
   border: 0;
-  border-radius: 0 0 20px 20px;
   background: color-mix(
     in srgb,
     var(--text-normal) 88%,
@@ -104,15 +110,33 @@
   );
   color: var(--background-primary);
   box-shadow: var(--shadow-s);
-  padding: 14px 12px 21px 24px;
   opacity: 0;
   overflow-y: auto;
   pointer-events: none;
-  transform: translateY(-100%);
   transition: opacity 150ms ease, transform 150ms ease;
 }
 
-.subscription-calculator-summary-floating.is-visible {
+.subscription-calculator-summary-overlay.is-top
+  .subscription-calculator-summary-floating {
+  top: 0;
+  left: 0;
+  border-radius: 0 0 20px 20px;
+  padding: 14px 12px 21px 24px;
+  transform: translateY(-100%);
+}
+
+.subscription-calculator-summary-overlay.is-bottom
+  .subscription-calculator-summary-floating {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 20px 20px 0 0;
+  padding: 14px 12px
+    calc(21px + var(--subscription-calculator-status-bar-inset, 0px)) 24px;
+  transform: translateY(100%);
+}
+
+.subscription-calculator-summary-overlay .subscription-calculator-summary-floating.is-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
@@ -177,7 +201,7 @@
 .subscription-calculator-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
@@ -219,9 +243,10 @@
 }
 
 .subscription-calculator-next-payment {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: max-content;
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  justify-self: center;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   line-height: 1.15;
@@ -230,9 +255,18 @@
   white-space: nowrap;
 }
 
-.subscription-calculator-card-name,
+.subscription-calculator-card-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin-inline-end: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .subscription-calculator-table-name span {
   overflow: hidden;
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -407,7 +441,7 @@
 }
 
 .subscription-calculator-card-actions {
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 1;
   display: flex;
   align-items: center;
@@ -433,17 +467,17 @@
   white-space: nowrap;
 }
 
-@container (max-width: 480px) {
-  .subscription-calculator-card.has-next-payment
-    .subscription-calculator-next-payment {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
+.subscription-calculator-card.is-next-payment-wrapped
+  .subscription-calculator-next-payment {
+  position: static;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  transform: none;
+}
 
-  .subscription-calculator-card.has-next-payment
-    .subscription-calculator-card-controls {
-    grid-row: 3;
-  }
+.subscription-calculator-card.is-next-payment-wrapped
+  .subscription-calculator-card-controls {
+  grid-row: 3;
 }
 
 .subscription-calculator-toggle {
@@ -556,6 +590,41 @@
   width: 100%;
 }
 
+.subscription-calculator-modal {
+  container-type: inline-size;
+}
+
+.subscription-calculator-modal .subscription-calculator-service-url-setting .setting-item-control {
+  min-width: 0;
+  gap: 8px;
+}
+
+.subscription-calculator-modal .subscription-calculator-service-url-setting input,
+.subscription-calculator-modal .subscription-calculator-service-url-setting button {
+  box-sizing: border-box;
+  height: var(--input-height);
+}
+
+.subscription-calculator-modal .subscription-calculator-service-url-setting input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.subscription-calculator-modal .subscription-calculator-service-url-setting button {
+  flex: 0 0 auto;
+}
+
+@container (max-width: 420px) {
+  .subscription-calculator-modal .subscription-calculator-service-url-setting .setting-item-control {
+    flex-wrap: wrap;
+  }
+
+  .subscription-calculator-modal .subscription-calculator-service-url-setting input {
+    flex-basis: 100%;
+  }
+}
+
 .subscription-calculator-settings-note {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
@@ -621,7 +690,17 @@
     align-items: stretch;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .subscription-calculator-summary-overlay.is-top
+    .subscription-calculator-summary-floating {
     padding: 10px 12px 14px;
+  }
+
+  .subscription-calculator-summary-overlay.is-bottom
+    .subscription-calculator-summary-floating {
+    padding: 10px 12px
+      calc(14px + var(--subscription-calculator-status-bar-inset, 0px));
   }
 
   .subscription-calculator-summary-floating .subscription-calculator-summary-values {

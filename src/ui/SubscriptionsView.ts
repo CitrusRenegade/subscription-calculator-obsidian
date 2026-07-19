@@ -21,16 +21,27 @@ import {
   renderSummaryHeader,
   updateFloatingSummary,
 } from "./components/SummaryHeader";
-import { shouldShowFloatingSummary } from "./floatingSummary";
-import { sortSubscriptions } from "./subscriptionSort";
+import {
+  getFloatingSummaryPresentation,
+  getFloatingSummaryPosition,
+  getBottomSheetStatusBarInset,
+  getStaticSummaryPlacement,
+  shouldShowFloatingSummary,
+  type FloatingSummaryPosition,
+} from "./floatingSummary";
+import { getSortStateFromSettings, sortSubscriptions } from "./subscriptionSort";
 
 export class SubscriptionsView extends ItemView {
   private unsubscribe: (() => void) | null = null;
-  private summaryObserver: IntersectionObserver | null = null;
   private summaryResizeObserver: ResizeObserver | null = null;
+  private summaryScrollContainer: HTMLElement | null = null;
+  private summaryAnimationFrame: number | null = null;
+  private summaryWindow: Window | null = null;
   private summaryOverlayHostEl: HTMLElement | null = null;
   private floatingSummaryEl: HTMLElement | null = null;
+  private staticSummarySentinelEl: HTMLElement | null = null;
   private viewBodyEl: HTMLElement | null = null;
+  private floatingSummaryPosition: FloatingSummaryPosition = "top";
   private sortMode: SubscriptionSortMode;
   private sortDirection: SubscriptionSortDirection;
 
@@ -42,9 +53,9 @@ export class SubscriptionsView extends ItemView {
     private readonly getSettings: () => PluginSettings
   ) {
     super(leaf);
-    const settings = this.getSettings();
-    this.sortMode = settings.sortMode;
-    this.sortDirection = settings.sortDirection;
+    const sortState = getSortStateFromSettings(this.getSettings());
+    this.sortMode = sortState.sortMode;
+    this.sortDirection = sortState.sortDirection;
   }
 
   getViewType(): string {
@@ -60,7 +71,10 @@ export class SubscriptionsView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    this.unsubscribe = this.store.subscribe(() => this.render());
+    this.unsubscribe = this.store.subscribe(() => {
+      this.syncSortStateFromSettings();
+      this.render();
+    });
     this.render();
   }
 
@@ -70,6 +84,7 @@ export class SubscriptionsView extends ItemView {
     this.cleanupSummaryOverlay();
     this.contentEl.removeClass("subscription-calculator-view");
     this.contentEl.style.removeProperty("--subscription-calculator-overlay-height");
+    this.contentEl.style.removeProperty("--subscription-calculator-sheet-height");
   }
 
   render(): void {
@@ -78,7 +93,15 @@ export class SubscriptionsView extends ItemView {
     const settings = this.getSettings();
     const displayPrecision = settings.moneyDisplayPrecision;
     const totals = this.store.getTotalsByCurrency();
-    const { body, floatingSummary } = this.ensureViewShell(totals, displayPrecision);
+    const floatingSummaryPosition = getFloatingSummaryPosition(
+      settings.floatingYearlyTotal
+    );
+    this.floatingSummaryPosition = floatingSummaryPosition;
+    const { body, floatingSummary } = this.ensureViewShell(
+      totals,
+      displayPrecision,
+      floatingSummaryPosition
+    );
     const previousScrollTop = container.scrollTop;
     body.empty();
     updateFloatingSummary(
@@ -87,13 +110,13 @@ export class SubscriptionsView extends ItemView {
       this.registry,
       displayPrecision
     );
-    const summary = renderSummaryHeader(
-      body,
-      totals,
-      this.registry,
-      displayPrecision
+    const staticSummaryPlacement = getStaticSummaryPlacement(
+      floatingSummaryPosition
     );
-
+    const topSummary =
+      staticSummaryPlacement === "before-content"
+        ? renderSummaryHeader(body, totals, this.registry, displayPrecision)
+        : null;
     const toolbar = body.createDiv({ cls: "subscription-calculator-toolbar" });
     const showDisabledButton = toolbar.createEl("button", {
       cls: "subscription-calculator-secondary-button",
@@ -173,92 +196,93 @@ export class SubscriptionsView extends ItemView {
       this.iconService,
       displayPrecision
     );
+    const summary =
+      topSummary ??
+      renderSummaryHeader(body, totals, this.registry, displayPrecision);
 
     container.scrollTop = previousScrollTop;
     const viewWindow = container.ownerDocument.defaultView;
     if (viewWindow === null) {
-      this.setFloatingSummaryVisible(false);
+      this.setFloatingSummaryVisible(floatingSummaryPosition, false);
       return;
     }
-    const summaryValues = summary.querySelector<HTMLElement>(
+    const summarySentinel = summary.querySelector<HTMLElement>(
       ".subscription-calculator-summary-values"
     );
-    if (summaryValues === null) {
-      this.setFloatingSummaryVisible(false);
+    if (summarySentinel === null) {
+      this.setFloatingSummaryVisible(floatingSummaryPosition, false);
       return;
     }
-
-    const rootBounds = container.getBoundingClientRect();
-    const summaryBounds = summaryValues.getBoundingClientRect();
-    this.setFloatingSummaryVisible(
-      shouldShowFloatingSummary({
-        rootTop: rootBounds.top,
-        rootHeight: rootBounds.height,
-        summaryBottom: summaryBounds.bottom,
-        summaryHeight: summaryBounds.height,
-      })
-    );
-
-    const summaryObserver = new viewWindow.IntersectionObserver(
-      ([entry]) => {
-        if (this.summaryObserver !== summaryObserver || entry === undefined) return;
-        this.setFloatingSummaryVisible(
-          shouldShowFloatingSummary({
-            rootTop: entry.rootBounds?.top,
-            rootHeight: entry.rootBounds?.height ?? 0,
-            summaryBottom: entry.boundingClientRect.bottom,
-            summaryHeight: entry.boundingClientRect.height,
-          })
-        );
-      },
-      { root: container, threshold: 0 }
-    );
-    this.summaryObserver = summaryObserver;
-    summaryObserver.observe(summaryValues);
-
+    this.staticSummarySentinelEl = summarySentinel;
     const summaryResizeObserver = new viewWindow.ResizeObserver(() => {
       if (this.summaryResizeObserver !== summaryResizeObserver) return;
-      this.updateFloatingSummaryOffset();
+      this.scheduleFloatingSummaryUpdate();
     });
     this.summaryResizeObserver = summaryResizeObserver;
+    this.summaryWindow = viewWindow;
+    this.summaryScrollContainer = container;
+    container.addEventListener("scroll", this.scheduleFloatingSummaryUpdate);
+    summaryResizeObserver.observe(container);
     summaryResizeObserver.observe(floatingSummary);
+    summaryResizeObserver.observe(summarySentinel);
+    if (floatingSummaryPosition === "bottom") {
+      const statusBar = container.ownerDocument.querySelector<HTMLElement>(".status-bar");
+      if (statusBar !== null) summaryResizeObserver.observe(statusBar);
+    }
+    this.scheduleFloatingSummaryUpdate();
   }
 
   private cleanupSummaryOverlay(): void {
     this.disconnectSummaryObservers();
+    this.floatingSummaryEl?.style.removeProperty(
+      "--subscription-calculator-status-bar-inset"
+    );
     this.summaryOverlayHostEl?.remove();
     this.summaryOverlayHostEl = null;
     this.viewBodyEl = null;
     this.floatingSummaryEl = null;
+    this.staticSummarySentinelEl = null;
+    this.contentEl.style.removeProperty("--subscription-calculator-sheet-height");
+    this.contentEl.style.removeProperty("--subscription-calculator-overlay-height");
   }
 
   private disconnectSummaryObservers(): void {
-    this.summaryObserver?.disconnect();
-    this.summaryObserver = null;
+    if (this.summaryAnimationFrame !== null && this.summaryWindow !== null) {
+      this.summaryWindow.cancelAnimationFrame(this.summaryAnimationFrame);
+    }
+    this.summaryAnimationFrame = null;
+    this.summaryWindow = null;
+    this.summaryScrollContainer?.removeEventListener(
+      "scroll",
+      this.scheduleFloatingSummaryUpdate
+    );
+    this.summaryScrollContainer = null;
     this.summaryResizeObserver?.disconnect();
     this.summaryResizeObserver = null;
   }
 
   private ensureViewShell(
     totals: ReturnType<SubscriptionStore["getTotalsByCurrency"]>,
-    displayPrecision: PluginSettings["moneyDisplayPrecision"]
+    displayPrecision: PluginSettings["moneyDisplayPrecision"],
+    position: FloatingSummaryPosition
   ): { body: HTMLElement; floatingSummary: HTMLElement } {
     const container = this.contentEl;
     const overlayHost = this.summaryOverlayHostEl;
     const floatingSummary = this.floatingSummaryEl;
     const body = this.viewBodyEl;
-    const shellIsCurrent =
+    const overlayIsCurrent =
       overlayHost?.parentElement === container &&
       floatingSummary?.parentElement === overlayHost &&
-      body?.parentElement === container;
-    if (shellIsCurrent && floatingSummary !== null && body !== null) {
+      overlayHost.classList.contains(`is-${position}`);
+    const shellIsCurrent = overlayIsCurrent && body?.parentElement === container;
+    if (shellIsCurrent && body !== null && floatingSummary !== null) {
       return { body, floatingSummary };
     }
 
     container.empty();
     container.addClass("subscription-calculator-view");
     const nextOverlayHost = container.createDiv({
-      cls: "subscription-calculator-summary-overlay",
+      cls: ["subscription-calculator-summary-overlay", `is-${position}`],
     });
     const nextFloatingSummary = renderFloatingSummary(
       nextOverlayHost,
@@ -273,20 +297,76 @@ export class SubscriptionsView extends ItemView {
     return { body: nextBody, floatingSummary: nextFloatingSummary };
   }
 
-  private setFloatingSummaryVisible(visible: boolean): void {
-    this.floatingSummaryEl?.classList.toggle("is-visible", visible);
-    this.updateFloatingSummaryOffset();
-  }
-
-  private updateFloatingSummaryOffset(): void {
-    const floatingSummary = this.floatingSummaryEl;
-    const height =
-      floatingSummary?.classList.contains("is-visible") === true
-        ? floatingSummary.getBoundingClientRect().height
-        : 0;
+  private setFloatingSummaryVisible(
+    position: FloatingSummaryPosition,
+    visible: boolean
+  ): void {
+    const presentation = getFloatingSummaryPresentation(
+      position,
+      visible,
+      this.floatingSummaryEl?.offsetHeight ?? 0
+    );
+    this.floatingSummaryEl?.classList.toggle("is-visible", presentation.visible);
     this.contentEl.style.setProperty(
       "--subscription-calculator-overlay-height",
-      `${height}px`
+      `${presentation.overlayHeight}px`
+    );
+    this.contentEl.style.setProperty(
+      "--subscription-calculator-sheet-height",
+      `${presentation.sheetHeight}px`
+    );
+  }
+
+  private readonly scheduleFloatingSummaryUpdate = (): void => {
+    if (this.summaryAnimationFrame !== null || this.summaryWindow === null) return;
+    this.summaryAnimationFrame = this.summaryWindow.requestAnimationFrame(() => {
+      this.summaryAnimationFrame = null;
+      this.updateFloatingSummaryLayout();
+    });
+  };
+
+  /** OBS-36.FLOATING_SUMMARY.1-5, OBS-36.LIFECYCLE.1 */
+  private updateFloatingSummaryLayout(): void {
+    const floatingSummary = this.floatingSummaryEl;
+    const summarySentinel = this.staticSummarySentinelEl;
+    if (floatingSummary === null || summarySentinel === null) return;
+
+    const viewBounds = this.contentEl.getBoundingClientRect();
+    if (this.floatingSummaryPosition === "bottom") {
+      const sheetHeight = floatingSummary.offsetHeight;
+      const statusBar = this.contentEl.ownerDocument.querySelector<HTMLElement>(
+        ".status-bar"
+      );
+      const statusBarInset = getBottomSheetStatusBarInset({
+        sheet: {
+          left: viewBounds.left,
+          right: viewBounds.right,
+          top: viewBounds.bottom - sheetHeight,
+          bottom: viewBounds.bottom,
+        },
+        statusBar: statusBar?.getBoundingClientRect() ?? null,
+      });
+      floatingSummary.style.setProperty(
+        "--subscription-calculator-status-bar-inset",
+        `${statusBarInset}px`
+      );
+    } else {
+      floatingSummary.style.removeProperty(
+        "--subscription-calculator-status-bar-inset"
+      );
+    }
+
+    const sentinelBounds = summarySentinel.getBoundingClientRect();
+    this.setFloatingSummaryVisible(
+      this.floatingSummaryPosition,
+      shouldShowFloatingSummary({
+        position: this.floatingSummaryPosition,
+        viewTop: viewBounds.top,
+        viewBottom: viewBounds.bottom,
+        sentinelTop: sentinelBounds.top,
+        sentinelBottom: sentinelBounds.bottom,
+        sentinelHeight: sentinelBounds.height,
+      })
     );
   }
 
@@ -304,6 +384,12 @@ export class SubscriptionsView extends ItemView {
     void this.store
       .saveSettings()
       .catch(() => new Notice("Failed to save sorting preference"));
+  }
+
+  private syncSortStateFromSettings(): void {
+    const sortState = getSortStateFromSettings(this.getSettings());
+    this.sortMode = sortState.sortMode;
+    this.sortDirection = sortState.sortDirection;
   }
 
   private getSortDirectionIcon(): "arrow-up" | "arrow-down" {
