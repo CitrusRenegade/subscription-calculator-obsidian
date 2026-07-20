@@ -19,6 +19,10 @@ export class MockElement {
 
 export class App {}
 
+export const Platform = {
+  isDesktop: true,
+};
+
 export class Modal {
   readonly contentEl = new MockElement();
   isClosed = false;

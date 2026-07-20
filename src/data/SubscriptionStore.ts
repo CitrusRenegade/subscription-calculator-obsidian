@@ -114,23 +114,20 @@ export class SubscriptionStore {
     if (!this.disableGracePeriods.size) return;
 
     const pendingGracePeriods = Array.from(this.disableGracePeriods.values());
-    const previousStates = new Map(
-      pendingGracePeriods.flatMap((gracePeriod) => {
-        const item = this.findItem(gracePeriod.subscriptionId);
-        return item
-          ? [
-              [
-                gracePeriod.subscriptionId,
-                {
-                  status: item.status,
-                  disabledOn: item.disabledOn,
-                  updatedOn: item.updatedOn,
-                },
-              ] as const,
-            ]
-          : [];
-      })
-    );
+    const previousStates = new Map<
+      string,
+      Pick<SubscriptionItem, "status" | "disabledOn" | "updatedOn">
+    >();
+    for (const gracePeriod of pendingGracePeriods) {
+      const item = this.findItem(gracePeriod.subscriptionId);
+      if (!item) continue;
+
+      previousStates.set(gracePeriod.subscriptionId, {
+        status: item.status,
+        disabledOn: item.disabledOn,
+        updatedOn: item.updatedOn,
+      });
+    }
 
     for (const gracePeriod of pendingGracePeriods) {
       window.clearTimeout(gracePeriod.timeoutId);

@@ -408,11 +408,11 @@ export class SubscriptionsView extends ItemView {
   ): string | DocumentFragment {
     if (this.sortMode !== mode) return label;
 
-    const fragment = activeDocument.createDocumentFragment();
-    const content = activeDocument.createElement("span");
+    const fragment = createFragment();
+    const content = fragment.createSpan();
     content.classList.add("subscription-calculator-sort-menu-title");
     content.append(label);
-    const icon = activeDocument.createElement("span");
+    const icon = content.createSpan();
     icon.classList.add("subscription-calculator-sort-icon");
     setIcon(icon, this.getSortDirectionIcon());
     content.append(icon);

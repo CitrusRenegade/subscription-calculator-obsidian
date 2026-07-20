@@ -1,8 +1,16 @@
-// eslint-disable-next-line import/no-nodejs-modules -- Test reads the shipped stylesheet.
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { Platform } from "obsidian";
+import { beforeAll, describe, expect, it } from "vitest";
 
-const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+let styles = "";
+
+async function readStyles(): Promise<string> {
+  if (!Platform.isDesktop) {
+    throw new Error("Stylesheet tests require the desktop runtime.");
+  }
+
+  const { readFileSync } = await import("node:fs");
+  return readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+}
 
 function declarationsFor(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -10,6 +18,10 @@ function declarationsFor(selector: string): string {
 }
 
 describe("subscription layout styles", () => {
+  beforeAll(async () => {
+    styles = await readStyles();
+  });
+
   it("OBS-36 lets the visible state override both positional transforms", () => {
     expect(
       declarationsFor(

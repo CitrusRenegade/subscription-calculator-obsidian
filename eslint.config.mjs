@@ -18,8 +18,6 @@ export default defineConfig([
           ignoreRegex: ["^ChatGPT$", "^Google S2$", "^https?://"],
         },
       ],
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
     },
   },
 ]);
