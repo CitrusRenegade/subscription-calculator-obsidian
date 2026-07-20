@@ -153,6 +153,16 @@ export function replacePluginData(target: PluginData, replacement: PluginData): 
 }
 
 function clonePluginData(data: PluginData): PluginData {
+  const iconCache: PluginData["iconCache"] = {};
+  for (const [key, icon] of Object.entries(data.iconCache)) {
+    Object.defineProperty(iconCache, key, {
+      value: { ...icon },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+
   return {
     schemaVersion: data.schemaVersion,
     settings: { ...data.settings },
@@ -161,9 +171,7 @@ function clonePluginData(data: PluginData): PluginData {
       price: { ...item.price },
       icon: { ...item.icon },
     })),
-    iconCache: Object.fromEntries(
-      Object.entries(data.iconCache).map(([key, icon]) => [key, { ...icon }])
-    ),
+    iconCache,
     customCurrencies: data.customCurrencies.map((currency) => ({ ...currency })),
   };
 }

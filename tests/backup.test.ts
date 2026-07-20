@@ -287,4 +287,31 @@ describe("subscription backup", () => {
     expect(JSON.stringify(current)).toBe(before);
     expect(order).toEqual(["flush", "save", "notify"]);
   });
+
+  it("preserves special cache keys when a failed restore rolls data back", async () => {
+    const current = createData();
+    Object.defineProperty(current.iconCache, "__proto__", {
+      value: {
+        ...current.iconCache["google-s2:netflix.com"],
+        cacheKey: "__proto__",
+      },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+
+    await expect(
+      restoreBackupData(current, JSON.stringify(createBackup(createData())), {
+        confirm: () => true,
+        flush: async () => undefined,
+        save: async () => {
+          throw new Error("disk full");
+        },
+        notify: () => undefined,
+      })
+    ).rejects.toThrow("disk full");
+
+    expect(Object.keys(current.iconCache)).toContain("__proto__");
+    expect(current.iconCache["__proto__"]?.cacheKey).toBe("__proto__");
+  });
 });
