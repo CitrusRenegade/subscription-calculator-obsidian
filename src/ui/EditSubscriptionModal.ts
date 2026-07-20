@@ -52,7 +52,7 @@ export class EditSubscriptionModal extends Modal {
           .setDisabled(!getOpenableServiceUrl(this.serviceUrl))
           .onClick(() => {
             const url = getOpenableServiceUrl(this.serviceUrl);
-            if (url) window.open(url, "_blank");
+            if (url) contentEl.ownerDocument.defaultView?.open(url, "_blank");
           });
       });
     serviceUrlSetting.settingEl.addClass("subscription-calculator-service-url-setting");

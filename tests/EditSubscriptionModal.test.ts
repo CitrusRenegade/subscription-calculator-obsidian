@@ -46,7 +46,7 @@ describe("EditSubscriptionModal Service URL", () => {
     vi.unstubAllGlobals();
   });
 
-  it("updates Open URL for unsaved input and opens its normalized URL without saving", () => {
+  it("updates Open URL for unsaved input and opens its normalized URL in the modal window without saving", () => {
     const updateSubscription = vi.fn();
     const modal = new EditSubscriptionModal(
       {} as App,
@@ -54,8 +54,14 @@ describe("EditSubscriptionModal Service URL", () => {
       {} as CurrencyRegistry,
       item
     );
-    const open = vi.fn();
-    vi.stubGlobal("window", { open });
+    const ownerWindowOpen = vi.fn();
+    const globalWindowOpen = vi.fn();
+    vi.stubGlobal("window", { open: globalWindowOpen });
+    (
+      modal as unknown as {
+        contentEl: { ownerDocument: { defaultView: { open: typeof ownerWindowOpen } } };
+      }
+    ).contentEl.ownerDocument = { defaultView: { open: ownerWindowOpen } };
 
     modal.onOpen();
 
@@ -77,7 +83,8 @@ describe("EditSubscriptionModal Service URL", () => {
     input?.emitChange("example.com");
     openUrlButton?.click();
 
-    expect(open).toHaveBeenCalledWith("https://example.com/", "_blank");
+    expect(ownerWindowOpen).toHaveBeenCalledWith("https://example.com/", "_blank");
+    expect(globalWindowOpen).not.toHaveBeenCalled();
     expect(updateSubscription).not.toHaveBeenCalled();
     expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
   });
