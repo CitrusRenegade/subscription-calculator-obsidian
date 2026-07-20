@@ -1,4 +1,11 @@
-import { App, Notice, PluginSettingTab, Setting, type ButtonComponent } from "obsidian";
+import {
+  App,
+  Notice,
+  PluginSettingTab,
+  Setting,
+  type ButtonComponent,
+  type SettingDefinitionItem,
+} from "obsidian";
 import type SubscriptionCalculatorPlugin from "../main";
 import {
   getCurrencyAmountMarker,
@@ -6,10 +13,30 @@ import {
 } from "../money/currencyDisplay";
 import type { CurrencyMeta, FaviconProvider, OpenMode } from "../types";
 
+type DynamicSettingTab = {
+  update?: () => void;
+};
+
 function createTextFragment(text: string): DocumentFragment {
-  const fragment = activeDocument.createDocumentFragment();
+  const fragment = createFragment();
   fragment.append(text);
   return fragment;
+}
+
+function getSelectableCurrencyOptions(
+  currencies: readonly CurrencyMeta[]
+): Record<string, string> {
+  const options: Record<string, string> = {};
+  for (const currency of currencies) {
+    options[currency.code] = getCurrencySelectLabel(currency);
+  }
+  return options;
+}
+
+function createDetachedFileInput(containerEl: HTMLElement): HTMLInputElement {
+  const input = containerEl.createEl("input");
+  input.remove();
+  return input;
 }
 
 function getDecimalPlacesText(scale: number): string {
@@ -35,11 +62,10 @@ function downloadJson(document: Document, filename: string, contents: string): v
 
   const blob = new view.Blob([contents], { type: "application/json" });
   const url = view.URL.createObjectURL(blob);
-  const link = document.createElement("a");
+  const link = document.body.createEl("a");
   link.href = url;
   link.download = filename;
   link.hidden = true;
-  document.body.append(link);
   link.click();
   link.remove();
   view.setTimeout(() => view.URL.revokeObjectURL(url), 0);
@@ -51,6 +77,139 @@ export class SubscriptionSettingTab extends PluginSettingTab {
   }
 
   display(): void {
+    this.renderContents();
+  }
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        name: "Open subscriptions in",
+        desc: "The same view is used in both placements.",
+        control: {
+          type: "dropdown",
+          key: "openMode",
+          options: {
+            "right-sidebar": "Right sidebar",
+            "main-tab": "Main tab",
+          },
+        },
+      },
+      {
+        name: "Default currency",
+        control: {
+          type: "dropdown",
+          key: "defaultCurrency",
+          options: getSelectableCurrencyOptions(
+            this.plugin.currencyRegistry.listSelectable()
+          ),
+        },
+      },
+      {
+        name: "More precise totals",
+        desc:
+          "Show totals to one decimal place instead of rounding to whole numbers (disabled by default).",
+        control: { type: "toggle", key: "moneyDisplayPrecision" },
+      },
+      {
+        name: "Total position",
+        desc: "Off: top (default). On: bottom.",
+        control: { type: "toggle", key: "floatingYearlyTotal" },
+      },
+      {
+        name: "Favicon provider",
+        desc: "Auto icons are cached in plugin data and are not fetched during normal render.",
+        control: {
+          type: "dropdown",
+          key: "faviconProvider",
+          options: { "google-s2": "Google S2", none: "Disabled" },
+        },
+      },
+      {
+        name: "Confirm before delete",
+        control: { type: "toggle", key: "confirmBeforeDelete" },
+      },
+      {
+        name: "Refresh all icons",
+        desc: "Refetches and caches icons for subscriptions using auto favicon and a service URL.",
+        searchable: false,
+        render: (setting) => {
+          this.addRefreshAllIconsButton(setting);
+        },
+      },
+      {
+        name: "Backup and restore",
+        searchable: false,
+        render: (setting) => {
+          this.renderBackupAndRestoreControls(setting.settingEl);
+        },
+      },
+      {
+        name: "Custom currencies",
+        searchable: false,
+        render: (setting) => {
+          this.renderCustomCurrenciesContent(setting.settingEl);
+        },
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    const settings = this.plugin.data.settings;
+    if (key === "moneyDisplayPrecision") {
+      return settings.moneyDisplayPrecision === 1;
+    }
+    if (
+      key === "openMode" ||
+      key === "defaultCurrency" ||
+      key === "floatingYearlyTotal" ||
+      key === "faviconProvider" ||
+      key === "confirmBeforeDelete"
+    ) {
+      return settings[key];
+    }
+    return undefined;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = this.plugin.data.settings;
+    if (key === "openMode" && (value === "right-sidebar" || value === "main-tab")) {
+      settings.openMode = value;
+      await this.plugin.savePluginData();
+      return;
+    }
+    if (key === "defaultCurrency" && typeof value === "string") {
+      settings.defaultCurrency = value;
+      await this.plugin.store.saveSettings();
+      return;
+    }
+    if (key === "moneyDisplayPrecision" && typeof value === "boolean") {
+      settings.moneyDisplayPrecision = value ? 1 : 0;
+      await this.plugin.store.saveSettings();
+      return;
+    }
+    if (key === "floatingYearlyTotal" && typeof value === "boolean") {
+      settings.floatingYearlyTotal = value;
+      await this.plugin.store.saveSettings();
+      return;
+    }
+    if (key === "faviconProvider" && (value === "google-s2" || value === "none")) {
+      settings.faviconProvider = value;
+      await this.plugin.savePluginData();
+      this.updateSettingsView();
+      return;
+    }
+    if (key === "confirmBeforeDelete" && typeof value === "boolean") {
+      settings.confirmBeforeDelete = value;
+      await this.plugin.savePluginData();
+    }
+  }
+
+  private updateSettingsView(): void {
+    const update = (this as unknown as DynamicSettingTab).update;
+    if (update) {
+      update.call(this);
+      return;
+    }
     this.renderContents();
   }
 
@@ -126,31 +285,11 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName("Refresh all icons")
-      .setDesc("Refetches and caches icons for subscriptions using auto favicon and a service URL.")
-      .addButton((button) => {
-        refreshAllButton = button;
-        button
-          .setButtonText("Refresh all")
-          .setDisabled(this.plugin.data.settings.faviconProvider === "none")
-          .onClick(async () => {
-            button.setDisabled(true).setButtonText("Refreshing…");
-            try {
-              const result = await this.plugin.store.refreshAllIcons();
-              new Notice(
-                `Icons: ${result.refreshed} refreshed, ${result.failed} failed, ${result.skipped} skipped`
-              );
-            } catch (e) {
-              console.error("Failed to refresh all subscription icons:", e);
-              new Notice("Failed to refresh all icons");
-            } finally {
-              button
-                .setButtonText("Refresh all")
-                .setDisabled(this.plugin.data.settings.faviconProvider === "none");
-            }
-          });
-      });
+    refreshAllButton = this.addRefreshAllIconsButton(
+      new Setting(containerEl)
+        .setName("Refresh all icons")
+        .setDesc("Refetches and caches icons for subscriptions using auto favicon and a service URL.")
+    );
 
     new Setting(containerEl)
       .setName("Confirm before delete")
@@ -164,6 +303,12 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl).setName("Backup and restore").setHeading();
+    this.renderBackupAndRestoreControls(containerEl);
+
+    this.renderCustomCurrenciesSection(containerEl);
+  }
+
+  private renderBackupAndRestoreControls(containerEl: HTMLElement): void {
     new Setting(containerEl)
       .setName("Export backup")
       .setDesc("Downloads settings, subscriptions, and custom currencies. Favicons are excluded.")
@@ -190,7 +335,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       .addButton((button) => {
         button.buttonEl.addClass("mod-warning");
         button.setButtonText("Restore JSON").onClick(() => {
-          const input = containerEl.ownerDocument.createElement("input");
+          const input = createDetachedFileInput(containerEl);
           input.type = "file";
           input.accept = "application/json,.json";
           input.addEventListener("change", () => {
@@ -200,8 +345,36 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           input.click();
         });
       });
+  }
 
-    this.renderCustomCurrenciesSection(containerEl);
+  private addRefreshAllIconsButton(setting: Setting): ButtonComponent {
+    let refreshAllButton: ButtonComponent | null = null;
+    setting.addButton((button) => {
+      refreshAllButton = button;
+      button
+        .setButtonText("Refresh all")
+        .setDisabled(this.plugin.data.settings.faviconProvider === "none")
+        .onClick(async () => {
+          button.setDisabled(true).setButtonText("Refreshing…");
+          try {
+            const result = await this.plugin.store.refreshAllIcons();
+            new Notice(
+              `Icons: ${result.refreshed} refreshed, ${result.failed} failed, ${result.skipped} skipped`
+            );
+          } catch (e) {
+            console.error("Failed to refresh all subscription icons:", e);
+            new Notice("Failed to refresh all icons");
+          } finally {
+            button
+              .setButtonText("Refresh all")
+              .setDisabled(this.plugin.data.settings.faviconProvider === "none");
+          }
+        });
+    });
+    if (refreshAllButton === null) {
+      throw new Error("Unable to create the refresh icons button.");
+    }
+    return refreshAllButton;
   }
 
   private async restoreBackupFile(file: File, button: ButtonComponent): Promise<void> {
@@ -233,7 +406,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       new Notice(
         `Backup restored: ${report.subscriptions.imported} subscriptions and ${report.customCurrencies.imported} custom currencies imported; ${report.subscriptions.skipped + report.customCurrencies.skipped} records skipped.`
       );
-      this.renderContents();
+      this.updateSettingsView();
     } catch (error) {
       console.error("Failed to restore backup:", error);
       new Notice(error instanceof Error ? error.message : "Failed to restore backup");
@@ -244,6 +417,10 @@ export class SubscriptionSettingTab extends PluginSettingTab {
 
   private renderCustomCurrenciesSection(containerEl: HTMLElement): void {
     new Setting(containerEl).setName("Custom currencies").setHeading();
+    this.renderCustomCurrenciesContent(containerEl);
+  }
+
+  private renderCustomCurrenciesContent(containerEl: HTMLElement): void {
     this.renderCustomCurrencyForm(containerEl);
 
     const customCurrencies = this.plugin.data.customCurrencies;
@@ -399,7 +576,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
               scale,
             });
             new Notice("Custom currency saved");
-            this.renderContents();
+            this.updateSettingsView();
           } catch (e) {
             new Notice(e instanceof Error ? e.message : "Failed to save currency");
           }
@@ -411,7 +588,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           try {
             await this.plugin.store.deleteCustomCurrency(currency.code);
             new Notice(isUsed ? "Currency archived" : "Currency deleted");
-            this.renderContents();
+            this.updateSettingsView();
           } catch (e) {
             new Notice(e instanceof Error ? e.message : "Failed to remove currency");
           }
@@ -425,7 +602,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
         try {
           await this.plugin.store.addCustomCurrency({ label, amountMarker, scale });
           new Notice("Custom currency added");
-          this.renderContents();
+          this.updateSettingsView();
         } catch (e) {
           new Notice(e instanceof Error ? e.message : "Failed to add currency");
         }
