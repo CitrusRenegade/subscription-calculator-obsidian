@@ -21,7 +21,9 @@ export class IconService {
 
   getCachedIcon(item: SubscriptionItem): CachedIcon | null {
     const key = item.icon.cacheKey;
-    if (!key) return null;
+    if (!key || !Object.prototype.hasOwnProperty.call(this.data.iconCache, key)) {
+      return null;
+    }
     return this.data.iconCache[key] ?? null;
   }
 
@@ -68,7 +70,7 @@ export class IconService {
   async ensureAutoIcon(item: SubscriptionItem): Promise<boolean> {
     if (item.icon.mode !== "auto") return false;
     const key = item.icon.cacheKey;
-    if (key && this.data.iconCache[key]) return false;
+    if (key && Object.prototype.hasOwnProperty.call(this.data.iconCache, key)) return false;
     return this.refreshAutoIcon(item);
   }
 }

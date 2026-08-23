@@ -582,6 +582,17 @@ export class SubscriptionStore {
 
   async setSubscriptionEnabled(id: string, enabled: boolean): Promise<void> {
     if (enabled) {
+      const currentGracePeriod = this.disableGracePeriods.get(id);
+      if (currentGracePeriod) {
+        this.nextDisableGraceVersion(id);
+        window.clearTimeout(currentGracePeriod.timeoutId);
+        this.disableGracePeriods.delete(id);
+        this.notify();
+        return;
+      }
+
+      if (!this.findItem(id)) return;
+      this.nextDisableGraceVersion(id);
       let cancelledGracePeriod = false;
       await this.mutateAndSave(
         () => {
@@ -624,10 +635,18 @@ export class SubscriptionStore {
 
   private scheduleDisableGracePeriod(id: string, version: number): void {
     const timeoutId = window.setTimeout(() => {
-      if (this.disableGracePeriods.get(id)?.version !== version) return;
+      if (
+        this.disableGracePeriods.get(id)?.version !== version ||
+        this.disableGraceVersions.get(id) !== version
+      ) {
+        return;
+      }
       this.disableGracePeriods.delete(id);
       void this
-        .mutateAndSave(() => this.disableSubscriptionNow(id), (changed) => changed)
+        .mutateAndSave(() => {
+          if (this.disableGraceVersions.get(id) !== version) return false;
+          return this.disableSubscriptionNow(id);
+        }, (changed) => changed)
         .then((changed) => {
           if (!changed) this.notify();
         })
@@ -641,17 +660,38 @@ export class SubscriptionStore {
   }
 
   async deleteSubscription(id: string): Promise<void> {
-    if (!this.findItem(id)) return;
-    const gracePeriod = this.disableGracePeriods.get(id);
-    if (gracePeriod) {
-      window.clearTimeout(gracePeriod.timeoutId);
-      this.disableGracePeriods.delete(id);
+    let cancelledGracePeriod: DisableGracePeriod | undefined;
+    let previousGraceVersion: number | undefined;
+
+    try {
+      await this.mutateAndSave(
+        () => {
+          if (!this.findItem(id)) return false;
+
+          const gracePeriod = this.disableGracePeriods.get(id);
+          if (gracePeriod) {
+            window.clearTimeout(gracePeriod.timeoutId);
+            this.disableGracePeriods.delete(id);
+            cancelledGracePeriod = gracePeriod;
+          }
+          previousGraceVersion = this.disableGraceVersions.get(id);
+          this.disableGraceVersions.delete(id);
+          this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
+          this.pruneUnusedArchivedCustomCurrencies();
+          return true;
+        },
+        (changed) => changed
+      );
+    } catch (error) {
+      if (cancelledGracePeriod && this.findItem(id)?.status === "enabled") {
+        const version = previousGraceVersion ?? cancelledGracePeriod.version;
+        this.disableGraceVersions.set(id, version);
+        this.scheduleDisableGracePeriod(id, version);
+      } else if (previousGraceVersion !== undefined) {
+        this.disableGraceVersions.set(id, previousGraceVersion);
+      }
+      throw error;
     }
-    this.disableGraceVersions.delete(id);
-    await this.mutateAndSave(() => {
-      this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
-      this.pruneUnusedArchivedCustomCurrencies();
-    });
   }
 
   async refreshIcon(id: string): Promise<boolean> {

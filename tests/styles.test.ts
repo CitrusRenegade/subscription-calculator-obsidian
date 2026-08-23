@@ -51,4 +51,10 @@ describe("subscription layout styles", () => {
       /margin-inline-end:\s*3px/
     );
   });
+
+  it("keeps keyboard focus visible on subscription toggles", () => {
+    expect(declarationsFor(".subscription-calculator-toggle:focus-within")).toMatch(
+      /outline:/
+    );
+  });
 });

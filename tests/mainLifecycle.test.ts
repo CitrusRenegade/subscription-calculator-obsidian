@@ -1,5 +1,5 @@
 import { Notice } from "obsidian";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import SubscriptionCalculatorPlugin from "../src/main";
 
 const notices = Notice as unknown as {
@@ -8,6 +8,11 @@ const notices = Notice as unknown as {
 };
 
 describe("plugin startup", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("continues registering the plugin when startup cleanup cannot be saved", async () => {
     notices.reset();
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -41,7 +46,5 @@ describe("plugin startup", () => {
       "Failed to clean up saved subscription data:",
       expect.any(Error)
     );
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 });

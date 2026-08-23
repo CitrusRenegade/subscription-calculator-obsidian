@@ -15,6 +15,7 @@ import type { SubscriptionItem, SubscriptionViewItem } from "../../types";
 import { getNextPaymentLayout } from "../subscriptionCardLayout";
 import {
   createCurrencySelect,
+  createCustomBillingPeriodDaysInput,
   createMoneyInput,
   createPeriodSelect,
   createToggleSwitch,
@@ -172,43 +173,47 @@ export function renderSubscriptionCard(
       .updateSubscription(item.id, { priceText, currencyCode: item.price.currencyCode })
       .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update price"));
   });
-  createCurrencySelect(controls, registry, item.price.currencyCode, (currencyCode) => {
-    const priceInput = controls.querySelector<HTMLInputElement>(
-      ".subscription-calculator-money-input"
-    );
-    void store
-      .updateSubscription(item.id, {
-        priceText: priceInput?.value ?? "0",
-        currencyCode,
-      })
-      .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update currency"));
-  });
-  createPeriodSelect(controls, item.billingPeriod, (billingPeriod) => {
-    void store
-      .updateSubscription(item.id, { billingPeriod })
-      .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update period"));
-  });
-
-  if (item.billingPeriod === "custom") {
-    const customInput = controls.createEl("input", {
-      cls: "subscription-calculator-custom-days",
-      attr: {
-        type: "number",
-        min: "1",
-        step: "1",
-        value: String(
-          item.customBillingPeriodDays ?? DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
-        ),
-        title: "Days",
-      },
-    });
-    customInput.addEventListener("change", () => {
+  createCurrencySelect(
+    controls,
+    registry,
+    item.price.currencyCode,
+    (currencyCode) => {
+      const priceInput = controls.querySelector<HTMLInputElement>(
+        ".subscription-calculator-money-input"
+      );
       void store
         .updateSubscription(item.id, {
-          customBillingPeriodDays: Number(customInput.value),
+          priceText: priceInput?.value ?? "0",
+          currencyCode,
         })
-        .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update custom period"));
-    });
+        .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update currency"));
+    },
+    `Currency for ${item.name}`
+  );
+  createPeriodSelect(
+    controls,
+    item.billingPeriod,
+    (billingPeriod) => {
+      void store
+        .updateSubscription(item.id, { billingPeriod })
+        .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update period"));
+    },
+    `Billing period for ${item.name}`
+  );
+
+  if (item.billingPeriod === "custom") {
+    createCustomBillingPeriodDaysInput(
+      controls,
+      item.customBillingPeriodDays ?? DEFAULT_CUSTOM_BILLING_PERIOD_DAYS,
+      (customBillingPeriodDays) => {
+        void store
+          .updateSubscription(item.id, {
+            customBillingPeriodDays,
+          })
+          .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update custom period"));
+      },
+      `Custom billing period days for ${item.name}`
+    );
   }
 
   if (item.effectiveStatus === "disabled") {

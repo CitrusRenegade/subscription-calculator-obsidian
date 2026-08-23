@@ -35,10 +35,14 @@ function createSelectField(
   return { display, select };
 }
 
-function updateSelectDisplay(select: HTMLSelectElement, display: HTMLElement): void {
+function updateSelectDisplay(
+  select: HTMLSelectElement,
+  display: HTMLElement,
+  ariaLabel: string
+): void {
   const text = select.selectedOptions[0]?.text ?? select.value;
   display.setText(text);
-  select.setAttribute("aria-label", text);
+  select.setAttribute("aria-label", ariaLabel);
 }
 
 export function createMoneyInput(
@@ -104,7 +108,8 @@ export function createCurrencySelect(
   container: HTMLElement,
   registry: CurrencyRegistry,
   selectedCode: string,
-  onChange: (currencyCode: string) => void
+  onChange: (currencyCode: string) => void,
+  ariaLabel = "Currency"
 ): HTMLSelectElement {
   const { display, select } = createSelectField(
     container,
@@ -131,9 +136,9 @@ export function createCurrencySelect(
     });
     option.selected = currency.code === selectedCode;
   }
-  updateSelectDisplay(select, display);
+  updateSelectDisplay(select, display, ariaLabel);
   select.addEventListener("change", () => {
-    updateSelectDisplay(select, display);
+    updateSelectDisplay(select, display, ariaLabel);
     onChange(select.value);
   });
   return select;
@@ -142,7 +147,8 @@ export function createCurrencySelect(
 export function createPeriodSelect(
   container: HTMLElement,
   selectedPeriod: BillingPeriod,
-  onChange: (period: BillingPeriod) => void
+  onChange: (period: BillingPeriod) => void,
+  ariaLabel = "Billing period"
 ): HTMLSelectElement {
   const { display, select } = createSelectField(
     container,
@@ -156,12 +162,33 @@ export function createPeriodSelect(
     });
     option.selected = period === selectedPeriod;
   }
-  updateSelectDisplay(select, display);
+  updateSelectDisplay(select, display, ariaLabel);
   select.addEventListener("change", () => {
-    updateSelectDisplay(select, display);
+    updateSelectDisplay(select, display, ariaLabel);
     onChange(select.value as BillingPeriod);
   });
   return select;
+}
+
+export function createCustomBillingPeriodDaysInput(
+  container: HTMLElement,
+  days: number,
+  onChange: (days: number) => void,
+  ariaLabel = "Custom billing period days"
+): HTMLInputElement {
+  const input = container.createEl("input", {
+    cls: "subscription-calculator-custom-days",
+    attr: {
+      type: "number",
+      min: "1",
+      step: "1",
+      value: String(days),
+      title: "Days",
+      "aria-label": ariaLabel,
+    },
+  });
+  input.addEventListener("change", () => onChange(Number(input.value)));
+  return input;
 }
 
 export function createToggleSwitch(

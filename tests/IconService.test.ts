@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDefaultData } from "../src/data/defaultData";
 import { IconService } from "../src/icons/IconService";
 import type { SubscriptionItem } from "../src/types";
@@ -37,5 +37,18 @@ describe("IconService", () => {
 
     expect(first.icon.cacheKey).toBeUndefined();
     expect(iconService.getCachedIcon(second)?.dataUrl).toBe("data:image/png;base64,icon");
+  });
+
+  it("ignores inherited icon-cache properties", async () => {
+    const data = createDefaultData();
+    const item = subscription("inherited");
+    item.icon.cacheKey = "toString";
+    data.subscriptions = [item];
+    const iconService = new IconService(data, () => "google-s2");
+    const refresh = vi.spyOn(iconService, "refreshAutoIcon").mockResolvedValue(true);
+
+    expect(iconService.getCachedIcon(item)).toBeNull();
+    await expect(iconService.ensureAutoIcon(item)).resolves.toBe(true);
+    expect(refresh).toHaveBeenCalledWith(item);
   });
 });
