@@ -4,6 +4,7 @@ import {
   getDaysUntil,
   getNextPaymentDate,
 } from "../src/date/paymentSchedule";
+import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
 
 describe("payment schedule", () => {
   it("has no next payment without a start date", () => {
@@ -13,6 +14,17 @@ describe("payment schedule", () => {
   it("finds the next weekly and custom payments", () => {
     expect(getNextPaymentDate("2026-06-01", "weekly", "2026-06-20")).toBe("2026-06-22");
     expect(getNextPaymentDate("2026-06-01", "custom", "2026-06-20", 10)).toBe("2026-06-21");
+  });
+
+  it("rejects custom intervals that cannot be represented as dates", () => {
+    expect(
+      getNextPaymentDate(
+        "2026-06-01",
+        "custom",
+        "2026-06-20",
+        MAX_CUSTOM_BILLING_PERIOD_DAYS + 1
+      )
+    ).toBeNull();
   });
 
   it("preserves the original monthly anchor after a short month", () => {

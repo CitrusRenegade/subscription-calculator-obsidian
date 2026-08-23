@@ -14,7 +14,10 @@ import { AddSubscriptionModal } from "./AddSubscriptionModal";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { EditSubscriptionModal } from "./EditSubscriptionModal";
 import { renderAddSubscriptionCard } from "./components/AddSubscriptionCard";
-import { renderSubscriptionCard } from "./components/SubscriptionCard";
+import {
+  renderSubscriptionCard,
+  setSubscriptionCardDeletionPending,
+} from "./components/SubscriptionCard";
 import { renderSubscriptionSummaryTable } from "./components/SubscriptionSummaryTable";
 import {
   renderFloatingSummary,
@@ -178,7 +181,7 @@ export class SubscriptionsView extends ItemView {
         this.registry,
         this.iconService,
         () => this.openEditModal(item),
-        () => this.confirmDelete(item)
+        (card) => this.confirmDelete(item, card)
       );
     }
 
@@ -426,11 +429,15 @@ export class SubscriptionsView extends ItemView {
     new EditSubscriptionModal(this.app, this.store, this.registry, item).open();
   }
 
-  private confirmDelete(item: SubscriptionViewItem): void {
+  private confirmDelete(item: SubscriptionViewItem, card: HTMLElement): void {
     const remove = () => {
+      setSubscriptionCardDeletionPending(card, true);
       void this.store
         .deleteSubscription(item.id)
-        .catch(() => new Notice("Failed to delete subscription"));
+        .catch(() => {
+          setSubscriptionCardDeletionPending(card, false);
+          new Notice("Failed to delete subscription");
+        });
     };
 
     if (this.getSettings().confirmBeforeDelete) {

@@ -1,5 +1,6 @@
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
 import { getCurrencySelectLabel } from "../../money/currencyDisplay";
+import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../../constants";
 import { moneyToInputValue } from "../../money/formatMoney";
 import type { BillingPeriod, Money } from "../../types";
 
@@ -49,7 +50,8 @@ export function createMoneyInput(
   container: HTMLElement,
   money: Money,
   registry: CurrencyRegistry,
-  onCommit: (value: string) => void
+  onCommit: (value: string) => void,
+  ariaLabel = "Price"
 ): HTMLInputElement {
   const field = container.createDiv({ cls: "subscription-calculator-money-field" });
   const display = field.createEl("button", {
@@ -64,6 +66,7 @@ export function createMoneyInput(
       step: "any",
       inputmode: "decimal",
       value: moneyToInputValue(money, registry),
+      "aria-label": ariaLabel,
     },
   });
   input.hidden = true;
@@ -181,6 +184,7 @@ export function createCustomBillingPeriodDaysInput(
     attr: {
       type: "number",
       min: "1",
+      max: String(MAX_CUSTOM_BILLING_PERIOD_DAYS),
       step: "1",
       value: String(days),
       title: "Days",

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
+import {
+  DEFAULT_CUSTOM_BILLING_PERIOD_DAYS,
+  MAX_CUSTOM_BILLING_PERIOD_DAYS,
+} from "../src/constants";
 import { migratePluginData } from "../src/data/migrations";
 
 describe("plugin data migrations", () => {
@@ -61,6 +64,28 @@ describe("plugin data migrations", () => {
           price: { amountMinor: 999, currencyCode: "USD" },
           billingPeriod: "custom",
           customBillingPeriodDays: 1.5,
+          icon: { mode: "auto" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-01",
+        },
+      ],
+    });
+
+    expect(data.subscriptions[0]?.customBillingPeriodDays).toBe(
+      DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
+    );
+  });
+
+  it("repairs a custom billing period beyond the supported date range", () => {
+    const data = migratePluginData({
+      subscriptions: [
+        {
+          id: "oversized-period",
+          name: "Oversized period",
+          status: "enabled",
+          price: { amountMinor: 999, currencyCode: "USD" },
+          billingPeriod: "custom",
+          customBillingPeriodDays: MAX_CUSTOM_BILLING_PERIOD_DAYS + 1,
           icon: { mode: "auto" },
           createdOn: "2026-06-01",
           updatedOn: "2026-06-01",

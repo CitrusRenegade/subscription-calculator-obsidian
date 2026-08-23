@@ -1,4 +1,5 @@
 import type { BillingPeriod, DateOnly } from "../types";
+import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../constants";
 import { isValidDateOnly } from "./dateOnly";
 
 interface CalendarDate {
@@ -87,7 +88,14 @@ export function getNextPaymentDate(
   if (billingPeriod === "monthly") return nextMonthBasedPayment(startDate, today, 1);
   if (billingPeriod === "quarterly") return nextMonthBasedPayment(startDate, today, 3);
   if (billingPeriod === "yearly") return nextMonthBasedPayment(startDate, today, 12);
-  if (!customBillingPeriodDays || customBillingPeriodDays <= 0) return null;
+  if (
+    !customBillingPeriodDays ||
+    !Number.isSafeInteger(customBillingPeriodDays) ||
+    customBillingPeriodDays <= 0 ||
+    customBillingPeriodDays > MAX_CUSTOM_BILLING_PERIOD_DAYS
+  ) {
+    return null;
+  }
   return nextDayBasedPayment(startDate, today, customBillingPeriodDays);
 }
 

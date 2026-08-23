@@ -500,6 +500,10 @@
   border-radius: 999px;
 }
 
+.subscription-calculator-card.is-deleting {
+  opacity: 0.6;
+}
+
 .subscription-calculator-toggle-track {
   width: 42px;
   height: 24px;

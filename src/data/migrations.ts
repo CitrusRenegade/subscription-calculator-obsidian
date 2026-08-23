@@ -1,5 +1,6 @@
 import {
   DEFAULT_CUSTOM_BILLING_PERIOD_DAYS,
+  MAX_CUSTOM_BILLING_PERIOD_DAYS,
   SCHEMA_VERSION,
 } from "../constants";
 import type {
@@ -127,7 +128,8 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
   const customBillingPeriodDays =
     typeof value.customBillingPeriodDays === "number" &&
     Number.isSafeInteger(value.customBillingPeriodDays) &&
-    value.customBillingPeriodDays > 0
+    value.customBillingPeriodDays > 0 &&
+    value.customBillingPeriodDays <= MAX_CUSTOM_BILLING_PERIOD_DAYS
       ? value.customBillingPeriodDays
       : billingPeriod === "custom"
         ? DEFAULT_CUSTOM_BILLING_PERIOD_DAYS

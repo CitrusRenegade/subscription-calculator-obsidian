@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
 import type { CurrencyRegistry } from "../src/money/CurrencyRegistry";
 import {
   createCurrencySelect,
   createCustomBillingPeriodDaysInput,
+  createMoneyInput,
   createPeriodSelect,
   createToggleSwitch,
 } from "../src/ui/components/FormControls";
@@ -14,7 +16,15 @@ class FakeElement {
   value = "";
   text = "";
   selected = false;
+  hidden = false;
+  readonly style = { setProperty: (_name: string, _value: string) => undefined };
   readonly selectedOptions: FakeElement[] = [];
+
+  createDiv(): FakeElement {
+    const child = new FakeElement();
+    this.children.push(child);
+    return child;
+  }
 
   createEl(_tagName?: string, options?: { attr?: Record<string, string> }): FakeElement {
     const child = new FakeElement();
@@ -44,6 +54,14 @@ class FakeElement {
   setText(text: string): void {
     this.text = text;
   }
+
+  empty(): void {
+    this.children.length = 0;
+  }
+
+  focus(): void {}
+
+  blur(): void {}
 
   addEventListener(_event: string, _listener: () => void): void {}
 }
@@ -96,5 +114,23 @@ describe("createToggleSwitch", () => {
     expect(days.getAttribute("aria-label")).toBe(
       "Custom billing period days for Netflix"
     );
+    expect(days.getAttribute("max")).toBe(String(MAX_CUSTOM_BILLING_PERIOD_DAYS));
+  });
+
+  it("labels the focused price input by its purpose", () => {
+    const container = new FakeElement();
+    const registry = {
+      get: () => ({ code: "USD", label: "USD", scale: 2, source: "builtin" }),
+    } as unknown as CurrencyRegistry;
+
+    const input = createMoneyInput(
+      container as unknown as HTMLElement,
+      { amountMinor: 1999, currencyCode: "USD" },
+      registry,
+      () => undefined,
+      "Price for Netflix"
+    );
+
+    expect(input.getAttribute("aria-label")).toBe("Price for Netflix");
   });
 });

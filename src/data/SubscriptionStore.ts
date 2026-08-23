@@ -2,6 +2,7 @@ import { Notice } from "obsidian";
 import {
   DEFAULT_CUSTOM_BILLING_PERIOD_DAYS,
   DISABLE_GRACE_PERIOD_MS,
+  MAX_CUSTOM_BILLING_PERIOD_DAYS,
 } from "../constants";
 import type {
   AddSubscriptionInput,
@@ -81,7 +82,12 @@ function isBillingPeriod(value: string): value is BillingPeriod {
 }
 
 function isValidCustomBillingPeriodDays(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= MAX_CUSTOM_BILLING_PERIOD_DAYS
+  );
 }
 
 function isMvpCurrencyScale(value: number): boolean {
@@ -125,6 +131,7 @@ export class SubscriptionStore {
   private readonly disableGracePeriods = new Map<string, DisableGracePeriod>();
   private readonly disableGraceVersions = new Map<string, number>();
   private writeQueue: Promise<void> = Promise.resolve();
+  private disposed = false;
 
   constructor(
     private readonly data: PluginData,
@@ -140,6 +147,7 @@ export class SubscriptionStore {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.disableGracePeriods.size) {
       void this.flushDisableGracePeriods().catch((error) => {
         console.error("Failed to save delayed subscription changes:", error);
@@ -191,12 +199,14 @@ export class SubscriptionStore {
       } catch (error) {
         for (const gracePeriod of pendingGracePeriods) {
           const { subscriptionId: id, version } = gracePeriod;
-          if (this.disableGraceVersions.get(id) !== version) continue;
-
           const previous = previousStates.get(id);
           const item = this.findItem(id);
           if (item && previous) Object.assign(item, previous);
-          if (item?.status === "enabled") {
+          if (
+            item?.status === "enabled" &&
+            !this.disposed &&
+            this.disableGraceVersions.get(id) === version
+          ) {
             this.scheduleDisableGracePeriod(id, version);
           }
         }
@@ -359,7 +369,9 @@ export class SubscriptionStore {
         input.billingPeriod === "custom" &&
         !isValidCustomBillingPeriodDays(input.customBillingPeriodDays)
       ) {
-        throw new Error("Custom billing period must be greater than 0 days.");
+        throw new Error(
+          `Custom billing period must be between 1 and ${MAX_CUSTOM_BILLING_PERIOD_DAYS} days.`
+        );
       }
 
       const today = todayLocalDate(this.clock);
@@ -506,7 +518,9 @@ export class SubscriptionStore {
         patch.customBillingPeriodDays !== undefined &&
         !isValidCustomBillingPeriodDays(patch.customBillingPeriodDays)
       ) {
-        throw new Error("Custom billing period must be greater than 0 days.");
+        throw new Error(
+          `Custom billing period must be between 1 and ${MAX_CUSTOM_BILLING_PERIOD_DAYS} days.`
+        );
       }
 
       if (typeof patch.name === "string") {
@@ -581,47 +595,39 @@ export class SubscriptionStore {
   }
 
   async setSubscriptionEnabled(id: string, enabled: boolean): Promise<void> {
+    if (this.disposed) return;
+
     if (enabled) {
+      const item = this.findItem(id);
+      if (!item) return;
+
+      const enableVersion = this.nextDisableGraceVersion(id);
       const currentGracePeriod = this.disableGracePeriods.get(id);
       if (currentGracePeriod) {
-        this.nextDisableGraceVersion(id);
         window.clearTimeout(currentGracePeriod.timeoutId);
         this.disableGracePeriods.delete(id);
         this.notify();
-        return;
       }
 
-      if (!this.findItem(id)) return;
-      this.nextDisableGraceVersion(id);
-      let cancelledGracePeriod = false;
+      if (item.status !== "disabled") return;
       await this.mutateAndSave(
         () => {
-          const gracePeriod = this.disableGracePeriods.get(id);
-          if (gracePeriod) {
-            this.nextDisableGraceVersion(id);
-            window.clearTimeout(gracePeriod.timeoutId);
-            this.disableGracePeriods.delete(id);
-            cancelledGracePeriod = true;
-            return false;
-          }
-
-          const item = this.findItem(id);
-          if (!item || item.status !== "disabled") return false;
-          this.nextDisableGraceVersion(id);
-          item.status = "enabled";
-          item.disabledOn = undefined;
-          item.updatedOn = todayLocalDate(this.clock);
+          if (this.disableGraceVersions.get(id) !== enableVersion) return false;
+          const queuedItem = this.findItem(id);
+          if (!queuedItem || queuedItem.status !== "disabled") return false;
+          queuedItem.status = "enabled";
+          queuedItem.disabledOn = undefined;
+          queuedItem.updatedOn = todayLocalDate(this.clock);
           return true;
         },
         (changed) => changed
       );
-      if (cancelledGracePeriod) this.notify();
       return;
     }
 
     const item = this.findItem(id);
     if (!item) return;
-    if (item.status === "disabled" || this.disableGracePeriods.has(id)) return;
+    if (this.disableGracePeriods.has(id)) return;
 
     this.scheduleDisableGracePeriod(id, this.nextDisableGraceVersion(id));
     this.notify();
@@ -635,6 +641,7 @@ export class SubscriptionStore {
 
   private scheduleDisableGracePeriod(id: string, version: number): void {
     const timeoutId = window.setTimeout(() => {
+      if (this.disposed) return;
       if (
         this.disableGracePeriods.get(id)?.version !== version ||
         this.disableGraceVersions.get(id) !== version
@@ -644,11 +651,12 @@ export class SubscriptionStore {
       this.disableGracePeriods.delete(id);
       void this
         .mutateAndSave(() => {
+          if (this.disposed) return false;
           if (this.disableGraceVersions.get(id) !== version) return false;
           return this.disableSubscriptionNow(id);
         }, (changed) => changed)
         .then((changed) => {
-          if (!changed) this.notify();
+          if (!changed && !this.disposed) this.notify();
         })
         .catch((e) => {
           console.error("Failed to save disabled subscription:", e);
@@ -683,7 +691,11 @@ export class SubscriptionStore {
         (changed) => changed
       );
     } catch (error) {
-      if (cancelledGracePeriod && this.findItem(id)?.status === "enabled") {
+      if (
+        !this.disposed &&
+        cancelledGracePeriod &&
+        this.findItem(id)?.status === "enabled"
+      ) {
         const version = previousGraceVersion ?? cancelledGracePeriod.version;
         this.disableGraceVersions.set(id, version);
         this.scheduleDisableGracePeriod(id, version);

@@ -31,6 +31,23 @@ export function toggleSubscriptionEnabled(
     .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to save subscription status"));
 }
 
+export function setSubscriptionCardDeletionPending(
+  card: HTMLElement,
+  pending: boolean
+): void {
+  card.classList.toggle("is-deleting", pending);
+  if (pending) card.setAttribute("aria-busy", "true");
+  else card.removeAttribute("aria-busy");
+
+  for (const control of Array.from(
+    card.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(
+      "button, input, select"
+    )
+  )) {
+    control.disabled = pending;
+  }
+}
+
 export function renderSubscriptionIcon(
   container: HTMLElement,
   item: SubscriptionItem,
@@ -110,7 +127,7 @@ export function renderSubscriptionCard(
   registry: CurrencyRegistry,
   iconService: IconService,
   onEdit: () => void,
-  onDelete: () => void
+  onDelete: (card: HTMLElement) => void
 ): void {
   const card = container.createDiv({ cls: "subscription-calculator-card" });
   card.classList.toggle("is-disabled", item.effectiveStatus === "disabled");
@@ -154,7 +171,7 @@ export function renderSubscriptionCard(
     attr: { "aria-label": "Delete subscription", title: "Delete subscription" },
   });
   setIcon(remove, "trash-2");
-  remove.addEventListener("click", onDelete);
+  remove.addEventListener("click", () => onDelete(card));
 
   createToggleSwitch(
     actions,
@@ -168,11 +185,17 @@ export function renderSubscriptionCard(
   }
 
   const controls = card.createDiv({ cls: "subscription-calculator-card-controls" });
-  createMoneyInput(controls, item.price, registry, (priceText) => {
-    void store
-      .updateSubscription(item.id, { priceText, currencyCode: item.price.currencyCode })
-      .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update price"));
-  });
+  createMoneyInput(
+    controls,
+    item.price,
+    registry,
+    (priceText) => {
+      void store
+        .updateSubscription(item.id, { priceText, currencyCode: item.price.currencyCode })
+        .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to update price"));
+    },
+    `Price for ${item.name}`
+  );
   createCurrencySelect(
     controls,
     registry,
