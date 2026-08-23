@@ -73,6 +73,27 @@ describe("plugin data migrations", () => {
     );
   });
 
+  it("preserves special icon-cache keys as own entries", () => {
+    const iconCache: Record<string, unknown> = {};
+    Object.defineProperty(iconCache, "__proto__", {
+      value: {
+        sourceUrl: "https://example.com/favicon.png",
+        serviceDomain: "example.com",
+        dataUrl: "data:image/png;base64,icon",
+        contentType: "image/png",
+        fetchedOn: "2026-06-01",
+      },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+
+    const data = migratePluginData({ iconCache });
+
+    expect(Object.keys(data.iconCache)).toContain("__proto__");
+    expect(data.iconCache["__proto__"]?.cacheKey).toBe("__proto__");
+  });
+
   it("does not synthesize disabled dates during migration", () => {
     const data = migratePluginData({
       subscriptions: [

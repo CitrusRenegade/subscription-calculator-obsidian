@@ -114,9 +114,14 @@ export class AddSubscriptionModal extends Modal {
     const disabledSetting = new Setting(contentEl)
       .setName("Disabled")
       .setDesc("Disabled subscriptions are saved but excluded from active totals.");
-    createToggleSwitch(disabledSetting.controlEl, this.disabled, (checked) => {
-      this.disabled = checked;
-    });
+    createToggleSwitch(
+      disabledSetting.controlEl,
+      this.disabled,
+      (checked) => {
+        this.disabled = checked;
+      },
+      "Disable subscription"
+    );
 
     new Setting(contentEl).addButton((button) =>
       button

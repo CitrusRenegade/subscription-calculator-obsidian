@@ -167,7 +167,8 @@ export function createPeriodSelect(
 export function createToggleSwitch(
   container: HTMLElement,
   checked: boolean,
-  onChange: (checked: boolean) => void
+  onChange: (checked: boolean) => void,
+  ariaLabel = "Toggle setting"
 ): HTMLLabelElement {
   const label = container.createEl("label", {
     cls: "subscription-calculator-toggle",
@@ -176,6 +177,7 @@ export function createToggleSwitch(
     attr: { type: "checkbox" },
   });
   input.checked = checked;
+  input.setAttribute("aria-label", ariaLabel);
   label.createSpan({ cls: "subscription-calculator-toggle-track" });
   input.addEventListener("change", () => onChange(input.checked));
   return label;

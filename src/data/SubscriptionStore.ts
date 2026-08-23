@@ -124,7 +124,6 @@ export class SubscriptionStore {
   private readonly listeners = new Set<() => void>();
   private readonly disableGracePeriods = new Map<string, DisableGracePeriod>();
   private readonly disableGraceVersions = new Map<string, number>();
-  private readonly flushingDisableGraceVersions = new Map<string, number>();
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -141,12 +140,11 @@ export class SubscriptionStore {
   }
 
   dispose(): void {
-    for (const gracePeriod of this.disableGracePeriods.values()) {
-      window.clearTimeout(gracePeriod.timeoutId);
+    if (this.disableGracePeriods.size) {
+      void this.flushDisableGracePeriods().catch((error) => {
+        console.error("Failed to save delayed subscription changes:", error);
+      });
     }
-    this.disableGracePeriods.clear();
-    this.disableGraceVersions.clear();
-    this.flushingDisableGraceVersions.clear();
     this.listeners.clear();
   }
 
@@ -181,47 +179,30 @@ export class SubscriptionStore {
       (gracePeriod) => gracePeriod.subscriptionId
     );
     this.disableGracePeriods.clear();
-    for (const gracePeriod of pendingGracePeriods) {
-      this.flushingDisableGraceVersions.set(
-        gracePeriod.subscriptionId,
-        gracePeriod.version
-      );
-    }
 
     let changed = false;
     for (const id of subscriptionIds) {
       changed = this.disableSubscriptionNow(id) || changed;
     }
 
-    try {
-      if (changed) {
-        try {
-          await this.saveData();
-        } catch (error) {
-          for (const gracePeriod of pendingGracePeriods) {
-            const { subscriptionId: id, version } = gracePeriod;
-            if (this.disableGraceVersions.get(id) !== version) continue;
+    if (changed) {
+      try {
+        await this.saveData();
+      } catch (error) {
+        for (const gracePeriod of pendingGracePeriods) {
+          const { subscriptionId: id, version } = gracePeriod;
+          if (this.disableGraceVersions.get(id) !== version) continue;
 
-            const previous = previousStates.get(id);
-            const item = this.findItem(id);
-            if (item && previous) Object.assign(item, previous);
-            if (item?.status === "enabled") {
-              this.scheduleDisableGracePeriod(id, version);
-            }
+          const previous = previousStates.get(id);
+          const item = this.findItem(id);
+          if (item && previous) Object.assign(item, previous);
+          if (item?.status === "enabled") {
+            this.scheduleDisableGracePeriod(id, version);
           }
-          throw error;
         }
-        this.notify();
+        throw error;
       }
-    } finally {
-      for (const gracePeriod of pendingGracePeriods) {
-        if (
-          this.flushingDisableGraceVersions.get(gracePeriod.subscriptionId) ===
-          gracePeriod.version
-        ) {
-          this.flushingDisableGraceVersions.delete(gracePeriod.subscriptionId);
-        }
-      }
+      this.notify();
     }
   }
 
@@ -601,39 +582,18 @@ export class SubscriptionStore {
 
   async setSubscriptionEnabled(id: string, enabled: boolean): Promise<void> {
     if (enabled) {
-      const flushingVersion = this.flushingDisableGraceVersions.get(id);
-      if (flushingVersion !== undefined) {
-        const item = this.findItem(id);
-        if (!item) return;
-
-        this.nextDisableGraceVersion(id);
-        item.status = "enabled";
-        item.disabledOn = undefined;
-        item.updatedOn = todayLocalDate(this.clock);
-        this.notify();
-        void this
-          .mutateAndSave(
-            () => this.findItem(id)?.status === "enabled",
-            (changed) => changed
-          )
-          .catch((error) => {
-            console.error("Failed to save enabled subscription:", error);
-            new Notice("Failed to save enabled subscription");
-          });
-        return;
-      }
-
-      const gracePeriod = this.disableGracePeriods.get(id);
-      if (gracePeriod) {
-        this.nextDisableGraceVersion(id);
-        window.clearTimeout(gracePeriod.timeoutId);
-        this.disableGracePeriods.delete(id);
-        this.notify();
-        return;
-      }
-
+      let cancelledGracePeriod = false;
       await this.mutateAndSave(
         () => {
+          const gracePeriod = this.disableGracePeriods.get(id);
+          if (gracePeriod) {
+            this.nextDisableGraceVersion(id);
+            window.clearTimeout(gracePeriod.timeoutId);
+            this.disableGracePeriods.delete(id);
+            cancelledGracePeriod = true;
+            return false;
+          }
+
           const item = this.findItem(id);
           if (!item || item.status !== "disabled") return false;
           this.nextDisableGraceVersion(id);
@@ -644,6 +604,7 @@ export class SubscriptionStore {
         },
         (changed) => changed
       );
+      if (cancelledGracePeriod) this.notify();
       return;
     }
 

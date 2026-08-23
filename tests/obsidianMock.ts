@@ -1,6 +1,7 @@
 export class MockElement {
   readonly children: MockElement[] = [];
   readonly classes = new Set<string>();
+  readonly attributes = new Map<string, string>();
 
   empty(): void {
     this.children.length = 0;
@@ -8,6 +9,10 @@ export class MockElement {
 
   addClass(className: string): void {
     this.classes.add(className);
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
   }
 
   createEl(): MockElement {
@@ -25,7 +30,67 @@ export class MockElement {
   addEventListener(_event: string, _listener: () => void): void {}
 }
 
-export class App {}
+export class WorkspaceLeaf {}
+
+export class App {
+  readonly workspace = {
+    getLeavesOfType: () => [] as WorkspaceLeaf[],
+    setActiveLeaf: () => undefined,
+    rightSplit: { expand: () => undefined },
+    getRightLeaf: () => new WorkspaceLeaf(),
+    getLeaf: () => new WorkspaceLeaf(),
+  };
+}
+
+export class Plugin {
+  readonly app = new App();
+  readonly registeredViewTypes: string[] = [];
+
+  async loadData(): Promise<unknown> {
+    return null;
+  }
+
+  async saveData(_data: unknown): Promise<void> {}
+
+  registerView(viewType: string, _factory: unknown): void {
+    this.registeredViewTypes.push(viewType);
+  }
+
+  addSettingTab(_tab: unknown): void {}
+
+  addRibbonIcon(_icon: string, _title: string, _callback: () => void): void {}
+
+  addCommand(_command: unknown): void {}
+
+  registerDomEvent(
+    _target: unknown,
+    _event: string,
+    _callback: () => void
+  ): void {}
+
+  register(_cleanup: () => void): void {}
+}
+
+export class PluginSettingTab {
+  readonly containerEl = new MockElement();
+
+  constructor(_app: App, _plugin: Plugin) {}
+}
+
+export class ItemView {
+  readonly contentEl = new MockElement();
+  readonly app = new App();
+
+  constructor(_leaf: WorkspaceLeaf) {}
+}
+
+export class Menu {
+  addItem(_callback: (item: unknown) => void): void {}
+
+  showAtMouseEvent(_event: MouseEvent): void {}
+}
+
+export function setIcon(_element: unknown, _icon: string): void {}
 
 export const Platform = {
   isDesktop: true,

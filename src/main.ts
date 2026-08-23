@@ -35,7 +35,12 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
       this.iconService,
       () => this.savePluginData()
     );
-    await this.store.cleanupUnusedArchivedCustomCurrencies();
+    try {
+      await this.store.cleanupUnusedArchivedCustomCurrencies();
+    } catch (error) {
+      console.error("Failed to clean up saved subscription data:", error);
+      new Notice("Saved-data cleanup failed");
+    }
 
     this.registerView(
       VIEW_TYPE_SUBSCRIPTIONS,

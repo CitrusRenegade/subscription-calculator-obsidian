@@ -164,22 +164,27 @@ function migrateIconCache(value: unknown): Record<string, CachedIcon> {
     const contentType = asString(rawIcon.contentType);
     const fetchedOn = parseDateOnly(rawIcon.fetchedOn);
     if (!sourceUrl || !serviceDomain || !dataUrl || !contentType || !fetchedOn) continue;
-    result[key] = {
-      cacheKey: key,
-      sourceUrl,
-      serviceDomain,
-      dataUrl,
-      contentType,
-      fetchedOn,
-      width:
-        typeof rawIcon.width === "number" && rawIcon.width > 0
-          ? rawIcon.width
-          : undefined,
-      height:
-        typeof rawIcon.height === "number" && rawIcon.height > 0
-          ? rawIcon.height
-          : undefined,
-    };
+    Object.defineProperty(result, key, {
+      value: {
+        cacheKey: key,
+        sourceUrl,
+        serviceDomain,
+        dataUrl,
+        contentType,
+        fetchedOn,
+        width:
+          typeof rawIcon.width === "number" && rawIcon.width > 0
+            ? rawIcon.width
+            : undefined,
+        height:
+          typeof rawIcon.height === "number" && rawIcon.height > 0
+            ? rawIcon.height
+            : undefined,
+      },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
   return result;
 }

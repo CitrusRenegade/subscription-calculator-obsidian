@@ -158,7 +158,8 @@ export function renderSubscriptionCard(
   createToggleSwitch(
     actions,
     item.effectiveStatus === "enabled",
-    (enabled) => toggleSubscriptionEnabled(store, item.id, enabled)
+    (enabled) => toggleSubscriptionEnabled(store, item.id, enabled),
+    `Enable or disable ${item.name}`
   );
 
   if (nextPaymentLabel) {

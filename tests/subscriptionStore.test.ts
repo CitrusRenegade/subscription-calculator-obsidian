@@ -255,6 +255,28 @@ describe("subscription store", () => {
     expect(setTimeout).toHaveBeenCalledTimes(2);
   });
 
+  it("flushes a pending disable even when the store is disposed immediately", async () => {
+    const setTimeout = vi.fn(() => 1);
+    const clearTimeout = vi.fn();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+
+    const data = createDefaultData();
+    const store = createStore(data);
+    await store.addSubscription({
+      name: "Pending disable",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+
+    await store.setSubscriptionEnabled(data.subscriptions[0].id, false);
+    const flushing = store.flushDisableGracePeriods();
+    store.dispose();
+    await flushing;
+
+    expect(data.subscriptions[0]?.status).toBe("disabled");
+  });
+
   it("does not restore a pending disable after a newer enable during a failed flush", async () => {
     const setTimeout = vi.fn(() => 1);
     const clearTimeout = vi.fn();
@@ -281,12 +303,51 @@ describe("subscription store", () => {
 
     const flushing = store.flushDisableGracePeriods();
     await Promise.resolve();
-    await store.setSubscriptionEnabled(id, true);
+    const enabling = store.setSubscriptionEnabled(id, true);
     rejectFlushSave?.(new Error("disk full"));
 
     await expect(flushing).rejects.toThrow("disk full");
+    await enabling;
     expect(data.subscriptions[0]?.status).toBe("enabled");
     expect(store.getEnabledSubscriptions()).toHaveLength(1);
-    expect(setTimeout).toHaveBeenCalledTimes(1);
+    expect(setTimeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("rolls a queued enable back when it cannot be saved after a flush", async () => {
+    const setTimeout = vi.fn(() => 1);
+    const clearTimeout = vi.fn();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+
+    const data = createDefaultData();
+    let saveCount = 0;
+    let finishFlushSave: (() => void) | undefined;
+    const flushSaveFinished = new Promise<void>((resolve) => {
+      finishFlushSave = resolve;
+    });
+    const store = createStore(data, async () => {
+      saveCount += 1;
+      if (saveCount === 2) {
+        await flushSaveFinished;
+        return;
+      }
+      if (saveCount === 3) throw new Error("enable save failed");
+    });
+    await store.addSubscription({
+      name: "Pending disable",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+    const id = data.subscriptions[0].id;
+    await store.setSubscriptionEnabled(id, false);
+
+    const flushing = store.flushDisableGracePeriods();
+    await Promise.resolve();
+    const enabling = store.setSubscriptionEnabled(id, true);
+    finishFlushSave?.();
+
+    await flushing;
+    await expect(enabling).rejects.toThrow("enable save failed");
+    expect(data.subscriptions[0]?.status).toBe("disabled");
   });
 });
