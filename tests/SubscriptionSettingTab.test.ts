@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+vi.stubGlobal(
+  "createFragment",
+  () => ({ append: () => undefined }) as unknown as DocumentFragment
+);
+
 vi.mock("obsidian", () => {
   class App {}
 
@@ -34,6 +39,26 @@ vi.mock("obsidian", () => {
       return child;
     }
 
+    createDiv(): MockElement {
+      const child = this.ownerDocument.createElement("div");
+      child.parent = this;
+      this.children.push(child);
+      return child;
+    }
+
+    createSpan(): MockElement {
+      const child = this.ownerDocument.createElement("span");
+      child.parent = this;
+      this.children.push(child);
+      return child;
+    }
+
+    addClass(_className: string): void {}
+
+    empty(): void {
+      this.children.length = 0;
+    }
+
     remove(): void {
       if (!this.parent) return;
       const index = this.parent.children.indexOf(this);
@@ -51,26 +76,92 @@ vi.mock("obsidian", () => {
   class MockButton {
     readonly buttonEl = { addClass: (_className: string) => undefined };
     buttonText = "";
-    private onClickCallback: (() => void) | undefined;
+    private onClickCallback: (() => void | Promise<void>) | undefined;
 
     setButtonText(value: string): this {
       this.buttonText = value;
       return this;
     }
 
-    onClick(callback: () => void): this {
+    setCta(): this {
+      return this;
+    }
+
+    setDisabled(_disabled: boolean): this {
+      return this;
+    }
+
+    onClick(callback: () => void | Promise<void>): this {
       this.onClickCallback = callback;
       return this;
     }
 
-    click(): void {
-      this.onClickCallback?.();
+    async click(): Promise<void> {
+      await this.onClickCallback?.();
+    }
+  }
+
+  class MockText {
+    setPlaceholder(_value: string): this {
+      return this;
+    }
+
+    setValue(_value: string): this {
+      return this;
+    }
+
+    onChange(_callback: (value: string) => void): this {
+      return this;
+    }
+  }
+
+  class MockToggle {
+    private onChangeCallback: ((value: boolean) => void | Promise<void>) | undefined;
+
+    setValue(_value: boolean): this {
+      return this;
+    }
+
+    setDisabled(_disabled: boolean): this {
+      return this;
+    }
+
+    onChange(callback: (value: boolean) => void | Promise<void>): this {
+      this.onChangeCallback = callback;
+      return this;
+    }
+
+    async change(value: boolean): Promise<void> {
+      await this.onChangeCallback?.(value);
+    }
+  }
+
+  class MockDropdown {
+    private onChangeCallback: ((value: string) => void | Promise<void>) | undefined;
+
+    addOption(_value: string, _label: string): this {
+      return this;
+    }
+
+    setValue(_value: string): this {
+      return this;
+    }
+
+    onChange(callback: (value: string) => void | Promise<void>): this {
+      this.onChangeCallback = callback;
+      return this;
+    }
+
+    async change(value: string): Promise<void> {
+      await this.onChangeCallback?.(value);
     }
   }
 
   class Setting {
     static readonly instances: Setting[] = [];
     readonly buttons: MockButton[] = [];
+    readonly dropdowns: MockDropdown[] = [];
+    readonly toggles: MockToggle[] = [];
     name = "";
 
     constructor(_containerEl: MockElement) {
@@ -86,7 +177,30 @@ vi.mock("obsidian", () => {
       return this;
     }
 
-    setDesc(_value: string): this {
+    setHeading(): this {
+      return this;
+    }
+
+    setDesc(_value: unknown): this {
+      return this;
+    }
+
+    addText(callback: (text: MockText) => void): this {
+      callback(new MockText());
+      return this;
+    }
+
+    addToggle(callback: (toggle: MockToggle) => void): this {
+      const toggle = new MockToggle();
+      this.toggles.push(toggle);
+      callback(toggle);
+      return this;
+    }
+
+    addDropdown(callback: (dropdown: MockDropdown) => void): this {
+      const dropdown = new MockDropdown();
+      this.dropdowns.push(dropdown);
+      callback(dropdown);
       return this;
     }
 
@@ -99,7 +213,6 @@ vi.mock("obsidian", () => {
   }
 
   class PluginSettingTab {
-    updateCalls = 0;
     readonly containerEl = new MockElement(new MockDocument());
 
     constructor(
@@ -107,8 +220,8 @@ vi.mock("obsidian", () => {
       readonly plugin: unknown
     ) {}
 
-    update(): void {
-      this.updateCalls++;
+    getSettingDefinitions(): unknown[] {
+      return [];
     }
   }
 
@@ -142,200 +255,187 @@ const { SubscriptionSettingTab } = await import(
   "../src/settings/SubscriptionSettingTab"
 );
 
-type SearchControl = {
-  type: string;
-  key: string;
-  options?: Record<string, string>;
-};
-
-function getSearchControl(definition: unknown): {
-  name: string;
-  control: SearchControl;
-} {
-  if (
-    typeof definition !== "object" ||
-    definition === null ||
-    !("name" in definition) ||
-    typeof definition.name !== "string" ||
-    !("control" in definition) ||
-    typeof definition.control !== "object" ||
-    definition.control === null ||
-    !("type" in definition.control) ||
-    typeof definition.control.type !== "string" ||
-    !("key" in definition.control) ||
-    typeof definition.control.key !== "string"
-  ) {
-    throw new Error("Expected a searchable setting control");
-  }
-
-  let options: Record<string, string> | undefined;
-  if (
-    "options" in definition.control &&
-    typeof definition.control.options === "object" &&
-    definition.control.options !== null
-  ) {
-    options = {};
-    for (const [key, value] of Object.entries(definition.control.options)) {
-      if (typeof value === "string") options[key] = value;
-    }
-  }
+function createPlugin() {
   return {
-    name: definition.name,
-    control: { type: definition.control.type, key: definition.control.key, options },
+    data: {
+      settings: {
+        openMode: "right-sidebar",
+        defaultCurrency: "USD",
+        faviconProvider: "google-s2",
+        confirmBeforeDelete: true,
+        moneyDisplayPrecision: 0,
+        floatingYearlyTotal: false,
+      },
+      customCurrencies: [] as Array<{
+        amountMarker?: string;
+        code: string;
+        isArchived?: boolean;
+        label: string;
+        scale: number;
+        source: "custom";
+      }>,
+    },
+    currencyRegistry: {
+      listSelectable: () => [
+        { code: "USD", label: "USD", amountMarker: "$", scale: 2, source: "builtin" },
+      ],
+      getDefault: () => ({
+        code: "USD",
+        label: "USD",
+        amountMarker: "$",
+        scale: 2,
+        source: "builtin",
+      }),
+    },
+    store: {
+      addCustomCurrency: vi.fn(),
+      deleteCustomCurrency: vi.fn(),
+      isCurrencyUsed: () => false,
+      refreshAllIcons: vi.fn(),
+      saveSettings: vi.fn(),
+      updateCustomCurrency: vi.fn(),
+    },
+    savePluginData: vi.fn(),
   };
 }
 
-function getImperativeDefinition(definition: unknown): {
-  name: string;
-  searchable: false;
-  render: (setting: unknown, group: unknown) => unknown;
-} {
-  if (
-    typeof definition !== "object" ||
-    definition === null ||
-    !("name" in definition) ||
-    typeof definition.name !== "string" ||
-    !("searchable" in definition) ||
-    definition.searchable !== false ||
-    !("render" in definition) ||
-    typeof definition.render !== "function"
-  ) {
-    throw new Error("Expected a non-searchable imperative setting definition");
-  }
-
-  return {
-    name: definition.name,
-    searchable: false,
-    render: definition.render as (setting: unknown, group: unknown) => unknown,
-  };
-}
-
-describe("SubscriptionSettingTab settings search", () => {
-  it("exposes persisted controls for search and retains imperative settings sections", async () => {
-    const saveSettings = vi.fn().mockResolvedValue(undefined);
-    const savePluginData = vi.fn().mockResolvedValue(undefined);
-    const plugin = {
-      data: {
-        settings: {
-          openMode: "right-sidebar",
-          defaultCurrency: "USD",
-          showDisabled: false,
-          faviconProvider: "google-s2",
-          confirmBeforeDelete: true,
-          moneyDisplayPrecision: 0,
-          floatingYearlyTotal: false,
-          sortMode: "alphabetical",
-          sortDirection: "ascending",
-        },
-        customCurrencies: [],
-      },
-      currencyRegistry: {
-        listSelectable: () => [
-          {
-            code: "USD",
-            label: "USD",
-            amountMarker: "$",
-            scale: 2,
-            source: "builtin",
-          },
-          {
-            code: "EUR",
-            label: "EUR",
-            amountMarker: "€",
-            scale: 2,
-            source: "builtin",
-          },
-        ],
-      },
-      store: { saveSettings },
-      savePluginData,
+describe("SubscriptionSettingTab", () => {
+  it("uses one manual renderer for Obsidian 1.5 through current clients", () => {
+    const settings = Setting as {
+      instances: Array<{ name: string }>;
+      reset(): void;
     };
-    const tab = new SubscriptionSettingTab(
-      {} as never,
-      plugin as never
+    settings.reset();
+    const tab = new SubscriptionSettingTab({} as never, createPlugin() as never);
+
+    expect(
+      (tab as unknown as { getSettingDefinitions(): unknown[] }).getSettingDefinitions()
+    ).toEqual([]);
+    tab.display();
+
+    expect(settings.instances.map((setting) => setting.name)).toEqual(
+      expect.arrayContaining([
+        "Backup and restore",
+        "Export backup",
+        "Restore backup",
+        "Custom currencies",
+      ])
     );
-
-    const definitions = tab.getSettingDefinitions();
-    expect(definitions).toHaveLength(9);
-    const controls = definitions
-      .filter((definition) => typeof definition === "object" && definition !== null && "control" in definition)
-      .map(getSearchControl);
-
-    expect(controls).toEqual([
-      {
-        name: "Open subscriptions in",
-        control: { type: "dropdown", key: "openMode", options: {
-          "right-sidebar": "Right sidebar",
-          "main-tab": "Main tab",
-        } },
-      },
-      {
-        name: "Default currency",
-        control: { type: "dropdown", key: "defaultCurrency", options: {
-          USD: "USD $",
-          EUR: "EUR €",
-        } },
-      },
-      {
-        name: "More precise totals",
-        control: { type: "toggle", key: "moneyDisplayPrecision", options: undefined },
-      },
-      {
-        name: "Total position",
-        control: { type: "toggle", key: "floatingYearlyTotal", options: undefined },
-      },
-      {
-        name: "Favicon provider",
-        control: { type: "dropdown", key: "faviconProvider", options: {
-          "google-s2": "Google S2",
-          none: "Disabled",
-        } },
-      },
-      {
-        name: "Confirm before delete",
-        control: { type: "toggle", key: "confirmBeforeDelete", options: undefined },
-      },
-    ]);
-
-    expect(definitions
-      .filter((definition) => typeof definition === "object" && definition !== null && "render" in definition)
-      .map(getImperativeDefinition)
-      .map(({ name, searchable }) => ({ name, searchable }))
-    ).toEqual([
-      { name: "Refresh all icons", searchable: false },
-      { name: "Backup and restore", searchable: false },
-      { name: "Custom currencies", searchable: false },
-    ]);
-
-    await tab.setControlValue("defaultCurrency", "EUR");
-    expect(plugin.data.settings.defaultCurrency).toBe("EUR");
-    expect(saveSettings).toHaveBeenCalledOnce();
-
-    await tab.setControlValue("openMode", "main-tab");
-    expect(plugin.data.settings.openMode).toBe("main-tab");
-    expect(savePluginData).toHaveBeenCalledOnce();
-
-    await tab.setControlValue("moneyDisplayPrecision", true);
-    expect(plugin.data.settings.moneyDisplayPrecision).toBe(1);
-    expect(tab.getControlValue("moneyDisplayPrecision")).toBe(true);
-    await tab.setControlValue("moneyDisplayPrecision", false);
-    expect(plugin.data.settings.moneyDisplayPrecision).toBe(0);
-    expect(tab.getControlValue("moneyDisplayPrecision")).toBe(false);
-
-    await tab.setControlValue("floatingYearlyTotal", true);
-    expect(plugin.data.settings.floatingYearlyTotal).toBe(true);
-
-    await tab.setControlValue("faviconProvider", "none");
-    expect(plugin.data.settings.faviconProvider).toBe("none");
-    expect((tab as unknown as { updateCalls: number }).updateCalls).toBe(1);
-
-    await tab.setControlValue("confirmBeforeDelete", false);
-    expect(plugin.data.settings.confirmBeforeDelete).toBe(false);
-    expect(saveSettings).toHaveBeenCalledTimes(4);
-    expect(savePluginData).toHaveBeenCalledTimes(3);
   });
 
-  it("opens Restore JSON's detached file input from the settings container", () => {
+  it("persists manual select and toggle controls", async () => {
+    const plugin = createPlugin();
+    const settings = Setting as {
+      instances: Array<{
+        dropdowns: Array<{ change(value: string): Promise<void> }>;
+        name: string;
+        toggles: Array<{ change(value: boolean): Promise<void> }>;
+      }>;
+      reset(): void;
+    };
+    settings.reset();
+    const tab = new SubscriptionSettingTab({} as never, plugin as never);
+    tab.display();
+
+    const openMode = settings.instances.find(
+      (setting) => setting.name === "Open subscriptions in"
+    );
+    await openMode?.dropdowns[0]?.change("main-tab");
+    expect(plugin.data.settings.openMode).toBe("main-tab");
+    expect(plugin.savePluginData).toHaveBeenCalledOnce();
+
+    const defaultCurrency = settings.instances.find(
+      (setting) => setting.name === "Default currency"
+    );
+    await defaultCurrency?.dropdowns[0]?.change("USD");
+    expect(plugin.store.saveSettings).toHaveBeenCalledOnce();
+
+    const confirmBeforeDelete = settings.instances.find(
+      (setting) => setting.name === "Confirm before delete"
+    );
+    await confirmBeforeDelete?.toggles[0]?.change(false);
+    expect(plugin.data.settings.confirmBeforeDelete).toBe(false);
+    expect(plugin.savePluginData).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes the manual settings after custom-currency actions", async () => {
+    const plugin = createPlugin();
+    plugin.data.customCurrencies.push({
+      amountMarker: "¤",
+      code: "TOK",
+      label: "TOK",
+      scale: 2,
+      source: "custom",
+    });
+    const settings = Setting as {
+      instances: Array<{
+        buttons: Array<{ buttonText: string; click(): Promise<void> }>;
+      }>;
+      reset(): void;
+    };
+    settings.reset();
+    const tab = new SubscriptionSettingTab({} as never, plugin as never);
+    tab.display();
+
+    const button = (label: string) =>
+      settings.instances
+        .flatMap((setting) => setting.buttons)
+        .find((candidate) => candidate.buttonText === label);
+
+    await button("Add currency")?.click();
+    expect(plugin.store.addCustomCurrency).toHaveBeenCalledWith({
+      amountMarker: "",
+      label: "",
+      scale: 2,
+    });
+
+    await button("Save")?.click();
+    expect(plugin.store.updateCustomCurrency).toHaveBeenCalledWith("TOK", {
+      amountMarker: "¤",
+      label: "TOK",
+      scale: 2,
+    });
+
+    await button("Delete")?.click();
+    expect(plugin.store.deleteCustomCurrency).toHaveBeenCalledWith("TOK");
+  });
+
+  it("rerenders manual settings after restoring a backup", async () => {
+    const plugin = {
+      ...createPlugin(),
+      restoreBackupJson: vi.fn().mockResolvedValue({
+        subscriptions: { imported: 1, skipped: 0 },
+        customCurrencies: { imported: 0, skipped: 0 },
+      }),
+    };
+    const settings = Setting as {
+      instances: unknown[];
+      reset(): void;
+    };
+    settings.reset();
+    const tab = new SubscriptionSettingTab({} as never, plugin as never);
+    tab.display();
+    const initialRenderSettingCount = settings.instances.length;
+    type RestoreButton = {
+      setDisabled(disabled: boolean): RestoreButton;
+      setButtonText(text: string): RestoreButton;
+    };
+    const button: RestoreButton = {
+      setDisabled: () => button,
+      setButtonText: () => button,
+    };
+
+    await (
+      tab as unknown as {
+        restoreBackupFile(file: File, button: RestoreButton): Promise<void>;
+      }
+    ).restoreBackupFile({ text: async () => "{}" } as File, button);
+
+    expect(plugin.restoreBackupJson).toHaveBeenCalledOnce();
+    expect(settings.instances.length).toBeGreaterThan(initialRenderSettingCount);
+  });
+
+  it("opens Restore JSON's detached file input from the manual settings section", () => {
     const document = new MockDocument();
     const container = new MockElement(document);
     const tab = new SubscriptionSettingTab({} as never, {} as never);
@@ -364,35 +464,5 @@ describe("SubscriptionSettingTab settings search", () => {
     );
     expect(fileInput?.wasClicked).toBe(true);
     expect(container.children).not.toContain(fileInput);
-  });
-
-  it("updates setting definitions after restoring a backup", async () => {
-    const restoreBackupJson = vi.fn().mockResolvedValue({
-      subscriptions: { imported: 1, skipped: 0 },
-      customCurrencies: { imported: 0, skipped: 0 },
-    });
-    const tab = new SubscriptionSettingTab(
-      {} as never,
-      { restoreBackupJson } as never
-    );
-    type RestoreButton = {
-      setDisabled(disabled: boolean): RestoreButton;
-      setButtonText(text: string): RestoreButton;
-    };
-    const button = {} as RestoreButton;
-    button.setDisabled = () => button;
-    button.setButtonText = () => button;
-
-    await (
-      tab as unknown as {
-        restoreBackupFile(file: File, button: RestoreButton): Promise<void>;
-      }
-    ).restoreBackupFile(
-      { text: async () => "{}" } as File,
-      button
-    );
-
-    expect(restoreBackupJson).toHaveBeenCalledOnce();
-    expect((tab as unknown as { updateCalls: number }).updateCalls).toBe(1);
   });
 });

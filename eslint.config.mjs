@@ -20,4 +20,25 @@ export default defineConfig([
       ],
     },
   },
+  {
+    files: ["tests/versionBump.test.ts"],
+    languageOptions: {
+      globals: { process: "readonly" },
+    },
+    rules: {
+      "obsidianmd/no-nodejs-modules": "off",
+    },
+  },
+  {
+    files: ["src/settings/SubscriptionSettingTab.ts"],
+    rules: {
+      "obsidianmd/settings-tab/prefer-setting-definitions": "off",
+    },
+  },
+  {
+    files: ["tests/SubscriptionSettingTab.test.ts"],
+    rules: {
+      "@typescript-eslint/no-deprecated": "off",
+    },
+  },
 ]);

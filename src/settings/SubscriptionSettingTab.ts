@@ -4,7 +4,6 @@ import {
   PluginSettingTab,
   Setting,
   type ButtonComponent,
-  type SettingDefinitionItem,
 } from "obsidian";
 import type SubscriptionCalculatorPlugin from "../main";
 import {
@@ -13,24 +12,10 @@ import {
 } from "../money/currencyDisplay";
 import type { CurrencyMeta, FaviconProvider, OpenMode } from "../types";
 
-type DynamicSettingTab = {
-  update?: () => void;
-};
-
 function createTextFragment(text: string): DocumentFragment {
   const fragment = createFragment();
   fragment.append(text);
   return fragment;
-}
-
-function getSelectableCurrencyOptions(
-  currencies: readonly CurrencyMeta[]
-): Record<string, string> {
-  const options: Record<string, string> = {};
-  for (const currency of currencies) {
-    options[currency.code] = getCurrencySelectLabel(currency);
-  }
-  return options;
 }
 
 function createDetachedFileInput(containerEl: HTMLElement): HTMLInputElement {
@@ -80,136 +65,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     this.renderContents();
   }
 
-  getSettingDefinitions(): SettingDefinitionItem[] {
-    return [
-      {
-        name: "Open subscriptions in",
-        desc: "The same view is used in both placements.",
-        control: {
-          type: "dropdown",
-          key: "openMode",
-          options: {
-            "right-sidebar": "Right sidebar",
-            "main-tab": "Main tab",
-          },
-        },
-      },
-      {
-        name: "Default currency",
-        control: {
-          type: "dropdown",
-          key: "defaultCurrency",
-          options: getSelectableCurrencyOptions(
-            this.plugin.currencyRegistry.listSelectable()
-          ),
-        },
-      },
-      {
-        name: "More precise totals",
-        desc:
-          "Show totals to one decimal place instead of rounding to whole numbers (disabled by default).",
-        control: { type: "toggle", key: "moneyDisplayPrecision" },
-      },
-      {
-        name: "Total position",
-        desc: "Off: top (default). On: bottom.",
-        control: { type: "toggle", key: "floatingYearlyTotal" },
-      },
-      {
-        name: "Favicon provider",
-        desc: "Auto icons are cached in plugin data and are not fetched during normal render.",
-        control: {
-          type: "dropdown",
-          key: "faviconProvider",
-          options: { "google-s2": "Google S2", none: "Disabled" },
-        },
-      },
-      {
-        name: "Confirm before delete",
-        control: { type: "toggle", key: "confirmBeforeDelete" },
-      },
-      {
-        name: "Refresh all icons",
-        desc: "Refetches and caches icons for subscriptions using auto favicon and a service URL.",
-        searchable: false,
-        render: (setting) => {
-          this.addRefreshAllIconsButton(setting);
-        },
-      },
-      {
-        name: "Backup and restore",
-        searchable: false,
-        render: (setting) => {
-          this.renderBackupAndRestoreControls(setting.settingEl);
-        },
-      },
-      {
-        name: "Custom currencies",
-        searchable: false,
-        render: (setting) => {
-          this.renderCustomCurrenciesContent(setting.settingEl);
-        },
-      },
-    ];
-  }
-
-  getControlValue(key: string): unknown {
-    const settings = this.plugin.data.settings;
-    if (key === "moneyDisplayPrecision") {
-      return settings.moneyDisplayPrecision === 1;
-    }
-    if (
-      key === "openMode" ||
-      key === "defaultCurrency" ||
-      key === "floatingYearlyTotal" ||
-      key === "faviconProvider" ||
-      key === "confirmBeforeDelete"
-    ) {
-      return settings[key];
-    }
-    return undefined;
-  }
-
-  async setControlValue(key: string, value: unknown): Promise<void> {
-    const settings = this.plugin.data.settings;
-    if (key === "openMode" && (value === "right-sidebar" || value === "main-tab")) {
-      settings.openMode = value;
-      await this.plugin.savePluginData();
-      return;
-    }
-    if (key === "defaultCurrency" && typeof value === "string") {
-      settings.defaultCurrency = value;
-      await this.plugin.store.saveSettings();
-      return;
-    }
-    if (key === "moneyDisplayPrecision" && typeof value === "boolean") {
-      settings.moneyDisplayPrecision = value ? 1 : 0;
-      await this.plugin.store.saveSettings();
-      return;
-    }
-    if (key === "floatingYearlyTotal" && typeof value === "boolean") {
-      settings.floatingYearlyTotal = value;
-      await this.plugin.store.saveSettings();
-      return;
-    }
-    if (key === "faviconProvider" && (value === "google-s2" || value === "none")) {
-      settings.faviconProvider = value;
-      await this.plugin.savePluginData();
-      this.updateSettingsView();
-      return;
-    }
-    if (key === "confirmBeforeDelete" && typeof value === "boolean") {
-      settings.confirmBeforeDelete = value;
-      await this.plugin.savePluginData();
-    }
-  }
-
   private updateSettingsView(): void {
-    const update = (this as unknown as DynamicSettingTab).update;
-    if (update) {
-      update.call(this);
-      return;
-    }
     this.renderContents();
   }
 
@@ -420,7 +276,9 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     this.renderCustomCurrenciesContent(containerEl);
   }
 
-  private renderCustomCurrenciesContent(containerEl: HTMLElement): void {
+  private renderCustomCurrenciesContent(
+    containerEl: HTMLElement
+  ): void {
     this.renderCustomCurrencyForm(containerEl);
 
     const customCurrencies = this.plugin.data.customCurrencies;
