@@ -1,4 +1,4 @@
-import { App, Setting } from "obsidian";
+import { App, Notice, Setting } from "obsidian";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import type { CurrencyRegistry } from "../src/money/CurrencyRegistry";
@@ -26,6 +26,11 @@ const mockSettings = Setting as unknown as {
   reset(): void;
 };
 
+const notices = Notice as unknown as {
+  messages: string[];
+  reset(): void;
+};
+
 const item: SubscriptionItem = {
   id: "spotify",
   name: "Spotify",
@@ -40,6 +45,7 @@ const item: SubscriptionItem = {
 describe("EditSubscriptionModal Service URL", () => {
   beforeEach(() => {
     mockSettings.reset();
+    notices.reset();
   });
 
   afterEach(() => {
@@ -86,6 +92,33 @@ describe("EditSubscriptionModal Service URL", () => {
     expect(ownerWindowOpen).toHaveBeenCalledWith("https://example.com/", "_blank");
     expect(globalWindowOpen).not.toHaveBeenCalled();
     expect(updateSubscription).not.toHaveBeenCalled();
+    expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
+  });
+
+  it("shows save failures from refresh and clear icon actions", async () => {
+    const modal = new EditSubscriptionModal(
+      {} as App,
+      {
+        updateSubscription: vi.fn().mockResolvedValue(undefined),
+        refreshIcon: vi.fn().mockRejectedValue(new Error("refresh failed")),
+        clearIcon: vi.fn().mockRejectedValue(new Error("clear failed")),
+      } as unknown as SubscriptionStore,
+      {} as CurrencyRegistry,
+      item
+    );
+
+    modal.onOpen();
+    const iconCacheSetting = mockSettings.instances.find(
+      (setting) => setting.name === "Icon cache"
+    );
+
+    iconCacheSetting?.buttons[0]?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    iconCacheSetting?.buttons[1]?.click();
+    await Promise.resolve();
+
+    expect(notices.messages).toEqual(["refresh failed", "clear failed"]);
     expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
   });
 });

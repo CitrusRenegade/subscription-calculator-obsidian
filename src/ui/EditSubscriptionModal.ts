@@ -130,13 +130,21 @@ export class EditSubscriptionModal extends Modal {
     const saved = await this.saveChanges();
     if (!saved) return;
 
-    const refreshed = await this.store.refreshIcon(this.item.id);
-    new Notice(refreshed ? "Icon refreshed" : "No icon fetched");
+    try {
+      const refreshed = await this.store.refreshIcon(this.item.id);
+      new Notice(refreshed ? "Icon refreshed" : "No icon fetched");
+    } catch (e) {
+      new Notice(e instanceof Error ? e.message : "Failed to refresh icon");
+    }
   }
 
   private async clearIcon(): Promise<void> {
-    await this.store.clearIcon(this.item.id);
-    new Notice("Icon cleared");
-    this.close();
+    try {
+      await this.store.clearIcon(this.item.id);
+      new Notice("Icon cleared");
+      this.close();
+    } catch (e) {
+      new Notice(e instanceof Error ? e.message : "Failed to clear icon");
+    }
   }
 }

@@ -3,7 +3,6 @@ import { VIEW_TYPE_SUBSCRIPTIONS } from "./constants";
 import { SubscriptionStore } from "./data/SubscriptionStore";
 import {
   createBackup,
-  restoreBackupData,
   type BackupImportReport,
 } from "./data/backup";
 import { migratePluginData } from "./data/migrations";
@@ -99,12 +98,7 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
     text: string,
     confirmRestore: (report: BackupImportReport) => boolean
   ): Promise<BackupImportReport | null> {
-    return restoreBackupData(this.data, text, {
-      confirm: confirmRestore,
-      flush: () => this.store.flushDisableGracePeriods(),
-      save: () => this.savePluginData(),
-      notify: () => this.store.notify(),
-    });
+    return this.store.restoreBackupJson(text, confirmRestore);
   }
 
   async openAddSubscriptionModal(): Promise<void> {

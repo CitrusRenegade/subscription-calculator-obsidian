@@ -51,6 +51,28 @@ describe("plugin data migrations", () => {
     expect(data.subscriptions[0]).not.toHaveProperty("cancelUrl");
   });
 
+  it("repairs a custom billing period with a fractional day count", () => {
+    const data = migratePluginData({
+      subscriptions: [
+        {
+          id: "fractional-period",
+          name: "Fractional period",
+          status: "enabled",
+          price: { amountMinor: 999, currencyCode: "USD" },
+          billingPeriod: "custom",
+          customBillingPeriodDays: 1.5,
+          icon: { mode: "auto" },
+          createdOn: "2026-06-01",
+          updatedOn: "2026-06-01",
+        },
+      ],
+    });
+
+    expect(data.subscriptions[0]?.customBillingPeriodDays).toBe(
+      DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
+    );
+  });
+
   it("does not synthesize disabled dates during migration", () => {
     const data = migratePluginData({
       subscriptions: [

@@ -126,6 +126,7 @@ function migrateSubscription(value: unknown): SubscriptionItem | null {
   const billingPeriod = asPeriod(value.billingPeriod);
   const customBillingPeriodDays =
     typeof value.customBillingPeriodDays === "number" &&
+    Number.isSafeInteger(value.customBillingPeriodDays) &&
     value.customBillingPeriodDays > 0
       ? value.customBillingPeriodDays
       : billingPeriod === "custom"

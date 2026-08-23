@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createBackup } from "../src/data/backup";
 import { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { createDefaultData } from "../src/data/defaultData";
 import type { Clock } from "../src/date/Clock";
@@ -28,6 +29,7 @@ function createStore(
 describe("subscription store", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("can create disabled subscriptions that are excluded from totals", async () => {
@@ -128,6 +130,69 @@ describe("subscription store", () => {
       name: "Renamed service",
       price: { amountMinor: 2000, currencyCode: "USD" },
     });
+  });
+
+  it("keeps restored data when a prior queued save fails", async () => {
+    const data = createDefaultData();
+    let saveCount = 0;
+    let rejectUpdateSave: ((reason?: unknown) => void) | undefined;
+    let signalUpdateSave: (() => void) | undefined;
+    const updateSaveStarted = new Promise<void>((resolve) => {
+      signalUpdateSave = resolve;
+    });
+    const store = createStore(data, async () => {
+      saveCount += 1;
+      if (saveCount !== 2) return;
+      await new Promise<void>((_resolve, reject) => {
+        rejectUpdateSave = reject;
+        signalUpdateSave?.();
+      });
+    });
+    await store.addSubscription({
+      name: "Current service",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+    const updated = store.updateSubscription(data.subscriptions[0]?.id ?? "", {
+      priceText: "30",
+    });
+    await updateSaveStarted;
+
+    const replacement = createDefaultData();
+    replacement.settings.defaultCurrency = "EUR";
+    const restored = store.restoreBackupJson(
+      JSON.stringify(createBackup(replacement)),
+      () => true
+    );
+    rejectUpdateSave?.(new Error("disk full"));
+
+    await expect(updated).rejects.toThrow("disk full");
+    await restored;
+    expect(data.settings.defaultCurrency).toBe("EUR");
+    expect(data.subscriptions).toEqual([]);
+  });
+
+  it("keeps committed data when a listener throws", async () => {
+    const data = createDefaultData();
+    const store = createStore(data);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    store.subscribe(() => {
+      throw new Error("render failed");
+    });
+
+    await store.addSubscription({
+      name: "Reliable service",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+
+    expect(data.subscriptions[0]?.name).toBe("Reliable service");
+    expect(error).toHaveBeenCalledWith(
+      "Subscription view listener failed:",
+      expect.any(Error)
+    );
   });
 
   it("rolls settings back when they cannot be saved", async () => {
