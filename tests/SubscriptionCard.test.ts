@@ -4,6 +4,7 @@ import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import {
   setSubscriptionCardDeletionPending,
   toggleSubscriptionEnabled,
+  watchNextPaymentCollision,
 } from "../src/ui/components/SubscriptionCard";
 
 class FakeCard {
@@ -61,5 +62,34 @@ describe("toggleSubscriptionEnabled", () => {
     expect(card.controls.some((control) => control.disabled)).toBe(false);
     expect(card.attributes.has("aria-busy")).toBe(false);
     expect(card.classes.has("is-deleting")).toBe(false);
+  });
+
+  it("disconnects card layout observers before the card is removed", () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    const requestAnimationFrame = vi.fn(() => 42);
+    const cancelAnimationFrame = vi.fn();
+    class FakeResizeObserver {
+      constructor(_callback: ResizeObserverCallback) {}
+
+      observe = observe;
+      disconnect = disconnect;
+    }
+    const cardWindow = {
+      ResizeObserver: FakeResizeObserver,
+      requestAnimationFrame,
+      cancelAnimationFrame,
+    } as unknown as Window;
+    const card = {
+      ownerDocument: { defaultView: cardWindow },
+      isConnected: true,
+    } as unknown as HTMLElement;
+
+    const dispose = watchNextPaymentCollision(card, card, card, card);
+
+    expect(observe).toHaveBeenCalledWith(card);
+    dispose();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(42);
   });
 });

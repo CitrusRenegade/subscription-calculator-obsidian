@@ -114,6 +114,15 @@ describe("subscription backup", () => {
     expect(result.report.subscriptions).toEqual({ imported: 1, skipped: 0 });
   });
 
+  it("repairs an invalid default currency while importing a backup", () => {
+    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    backup.payload.settings.defaultCurrency = "GHOST";
+
+    const result = parseBackup(JSON.stringify(backup));
+
+    expect(result.data.settings.defaultCurrency).toBe("USD");
+  });
+
   it("rejects a future backup version before producing imported data", () => {
     const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
     backup.version = 2;

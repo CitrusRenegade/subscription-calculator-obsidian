@@ -293,6 +293,34 @@ describe("subscription store", () => {
     expect(setTimeout).toHaveBeenCalledTimes(2);
   });
 
+  it("notifies views after restoring a pending disable from a failed delete", async () => {
+    const setTimeout = vi.fn(() => 1);
+    const clearTimeout = vi.fn();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+
+    const data = createDefaultData();
+    let saveFails = false;
+    const store = createStore(data, async () => {
+      if (saveFails) throw new Error("disk full");
+    });
+    await store.addSubscription({
+      name: "Visible pending delete",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+    const id = data.subscriptions[0].id;
+    await store.setSubscriptionEnabled(id, false);
+
+    const enabledCounts: number[] = [];
+    store.subscribe(() => enabledCounts.push(store.getEnabledSubscriptions().length));
+    saveFails = true;
+
+    await expect(store.deleteSubscription(id)).rejects.toThrow("disk full");
+
+    expect(enabledCounts).toEqual([0]);
+  });
+
   it("keeps a later enable when the grace timer fires behind a busy write queue", async () => {
     const timerCallbacks: Array<() => void> = [];
     const setTimeout = vi.fn((callback: () => void) => {
@@ -498,6 +526,53 @@ describe("subscription store", () => {
 
     await expect(deleting).rejects.toThrow("disk full");
     expect(setTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves a disable queued by its timer before disposal", async () => {
+    const timerCallbacks: Array<() => void> = [];
+    const setTimeout = vi.fn((callback: () => void) => {
+      timerCallbacks.push(callback);
+      return timerCallbacks.length;
+    });
+    const clearTimeout = vi.fn();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+
+    const data = createDefaultData();
+    let saveCount = 0;
+    let releaseBusySave: (() => void) | undefined;
+    let signalBusySave: (() => void) | undefined;
+    const busySaveStarted = new Promise<void>((resolve) => {
+      signalBusySave = resolve;
+    });
+    const busySaveFinished = new Promise<void>((resolve) => {
+      releaseBusySave = resolve;
+    });
+    const store = createStore(data, async () => {
+      saveCount += 1;
+      if (saveCount !== 2) return;
+      signalBusySave?.();
+      await busySaveFinished;
+    });
+    await store.addSubscription({
+      name: "Queued before disposal",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+    const id = data.subscriptions[0].id;
+    const busyUpdate = store.updateSubscription(id, { name: "Still queued" });
+    await busySaveStarted;
+    await store.setSubscriptionEnabled(id, false);
+    timerCallbacks[0]?.();
+    store.dispose();
+    releaseBusySave?.();
+
+    await busyUpdate;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(data.subscriptions[0]?.status).toBe("disabled");
+    expect(saveCount).toBe(3);
   });
 
   it("flushes a pending disable even when the store is disposed immediately", async () => {

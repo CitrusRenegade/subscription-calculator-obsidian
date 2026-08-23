@@ -4,6 +4,7 @@ import {
   MAX_CUSTOM_BILLING_PERIOD_DAYS,
 } from "../src/constants";
 import { migratePluginData } from "../src/data/migrations";
+import { DEFAULT_SETTINGS } from "../src/data/defaultData";
 
 describe("plugin data migrations", () => {
   it("OBS-36 defaults the floating yearly total to off and preserves explicit choices", () => {
@@ -28,6 +29,26 @@ describe("plugin data migrations", () => {
       migratePluginData({ settings: { moneyDisplayPrecision: 2 } }).settings
         .moneyDisplayPrecision
     ).toBe(0);
+  });
+
+  it("repairs defaults that do not name a selectable currency", () => {
+    expect(
+      migratePluginData({ settings: { defaultCurrency: "GHOST" } }).settings.defaultCurrency
+    ).toBe(DEFAULT_SETTINGS.defaultCurrency);
+    expect(
+      migratePluginData({
+        settings: { defaultCurrency: "TOK" },
+        customCurrencies: [
+          { code: "TOK", label: "Tokens", scale: 0, source: "custom", isArchived: true },
+        ],
+      }).settings.defaultCurrency
+    ).toBe(DEFAULT_SETTINGS.defaultCurrency);
+    expect(
+      migratePluginData({
+        settings: { defaultCurrency: "TOK" },
+        customCurrencies: [{ code: "TOK", label: "Tokens", scale: 0, source: "custom" }],
+      }).settings.defaultCurrency
+    ).toBe("TOK");
   });
 
   it("repairs a custom billing period without a day count", () => {

@@ -240,6 +240,14 @@ export function migratePluginData(value: unknown): PluginData {
   const validCurrencyCodes = new Set(
     [...BUILTIN_CURRENCIES, ...data.customCurrencies].map((currency) => currency.code)
   );
+  const selectableCurrencyCodes = new Set(
+    [...BUILTIN_CURRENCIES, ...data.customCurrencies.filter((currency) => !currency.isArchived)].map(
+      (currency) => currency.code
+    )
+  );
+  if (!selectableCurrencyCodes.has(data.settings.defaultCurrency)) {
+    data.settings.defaultCurrency = DEFAULT_SETTINGS.defaultCurrency;
+  }
   data.subscriptions = migrateSubscriptions(raw.subscriptions, validCurrencyCodes);
   data.iconCache = migrateIconCache(raw.iconCache);
   return data;

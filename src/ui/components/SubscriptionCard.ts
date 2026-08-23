@@ -72,21 +72,34 @@ export function renderSubscriptionIcon(
   setIcon(icon, getCurrencyIconName(currency?.code ?? item.price.currencyCode));
 }
 
-function wrapNextPaymentOnCollision(
+export function watchNextPaymentCollision(
   card: HTMLElement,
   name: HTMLElement,
   actions: HTMLElement,
   nextPayment: HTMLElement
-): void {
+): () => void {
   const cardWindow = card.ownerDocument.defaultView;
-  if (cardWindow === null) return;
+  if (cardWindow === null) return () => undefined;
 
   let resizeObserver: ResizeObserver | null = null;
+  let animationFrame: number | null = null;
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    resizeObserver?.disconnect();
+    resizeObserver = null;
+    if (animationFrame !== null) {
+      cardWindow.cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+  };
   const sync = () => {
-    cardWindow.requestAnimationFrame(() => {
-      if (!card.isConnected) {
-        resizeObserver?.disconnect();
-        resizeObserver = null;
+    if (disposed || animationFrame !== null) return;
+    animationFrame = cardWindow.requestAnimationFrame(() => {
+      animationFrame = null;
+      if (disposed || !card.isConnected) {
+        dispose();
         return;
       }
 
@@ -118,6 +131,7 @@ function wrapNextPaymentOnCollision(
   resizeObserver = new cardWindow.ResizeObserver(sync);
   resizeObserver.observe(card);
   sync();
+  return dispose;
 }
 
 export function renderSubscriptionCard(
@@ -128,7 +142,7 @@ export function renderSubscriptionCard(
   iconService: IconService,
   onEdit: () => void,
   onDelete: (card: HTMLElement) => void
-): void {
+): () => void {
   const card = container.createDiv({ cls: "subscription-calculator-card" });
   card.classList.toggle("is-disabled", item.effectiveStatus === "disabled");
   card.classList.toggle("is-disable-grace-period", item.inDisableGracePeriod);
@@ -180,9 +194,9 @@ export function renderSubscriptionCard(
     `Enable or disable ${item.name}`
   );
 
-  if (nextPaymentLabel) {
-    wrapNextPaymentOnCollision(card, name, actions, nextPaymentLabel);
-  }
+  const disposeCollisionWatcher = nextPaymentLabel
+    ? watchNextPaymentCollision(card, name, actions, nextPaymentLabel)
+    : () => undefined;
 
   const controls = card.createDiv({ cls: "subscription-calculator-card-controls" });
   createMoneyInput(
@@ -247,4 +261,6 @@ export function renderSubscriptionCard(
         : "disabled",
     });
   }
+
+  return disposeCollisionWatcher;
 }

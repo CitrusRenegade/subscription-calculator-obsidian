@@ -81,7 +81,8 @@ export function createMoneyInput(
         text: `.${fraction}`,
       });
     }
-    display.setAttribute("aria-label", `Edit price ${input.value || "0"}`);
+    const priceLabel = `${ariaLabel[0]?.toLowerCase() ?? "p"}${ariaLabel.slice(1)}`;
+    display.setAttribute("aria-label", `Edit ${priceLabel}: ${input.value || "0"}`);
   };
   const updateWidth = () => setFieldTextWidth(field, input.value || "0", 5, 14);
   const commit = () => onCommit(input.value);

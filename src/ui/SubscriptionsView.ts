@@ -44,6 +44,7 @@ export class SubscriptionsView extends ItemView {
   private floatingSummaryEl: HTMLElement | null = null;
   private staticSummarySentinelEl: HTMLElement | null = null;
   private viewBodyEl: HTMLElement | null = null;
+  private cardDisposers: Array<() => void> = [];
   private floatingSummaryPosition: FloatingSummaryPosition = "top";
   private sortMode: SubscriptionSortMode;
   private sortDirection: SubscriptionSortDirection;
@@ -84,6 +85,7 @@ export class SubscriptionsView extends ItemView {
   async onClose(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.cleanupCardObservers();
     this.cleanupSummaryOverlay();
     this.contentEl.removeClass("subscription-calculator-view");
     this.contentEl.style.removeProperty("--subscription-calculator-overlay-height");
@@ -91,6 +93,7 @@ export class SubscriptionsView extends ItemView {
   }
 
   render(): void {
+    this.cleanupCardObservers();
     this.disconnectSummaryObservers();
     const container = this.contentEl;
     const settings = this.getSettings();
@@ -174,14 +177,16 @@ export class SubscriptionsView extends ItemView {
       this.sortDirection,
       todayLocalDate()
     )) {
-      renderSubscriptionCard(
-        cards,
-        item,
-        this.store,
-        this.registry,
-        this.iconService,
-        () => this.openEditModal(item),
-        (card) => this.confirmDelete(item, card)
+      this.cardDisposers.push(
+        renderSubscriptionCard(
+          cards,
+          item,
+          this.store,
+          this.registry,
+          this.iconService,
+          () => this.openEditModal(item),
+          (card) => this.confirmDelete(item, card)
+        )
       );
     }
 
@@ -320,6 +325,11 @@ export class SubscriptionsView extends ItemView {
       "--subscription-calculator-sheet-height",
       `${presentation.sheetHeight}px`
     );
+  }
+
+  private cleanupCardObservers(): void {
+    for (const dispose of this.cardDisposers) dispose();
+    this.cardDisposers = [];
   }
 
   private readonly scheduleFloatingSummaryUpdate = (): void => {

@@ -237,7 +237,8 @@ export class SubscriptionStore {
 
   private async mutateAndSave<T>(
     mutation: () => T | Promise<T>,
-    shouldSave: (result: T) => boolean = () => true
+    shouldSave: (result: T) => boolean = () => true,
+    notifyOnRollback = true
   ): Promise<T> {
     return this.enqueueWrite(async () => {
       const previous = clonePluginData(this.data);
@@ -248,7 +249,7 @@ export class SubscriptionStore {
         await this.saveData();
       } catch (error) {
         restorePluginData(this.data, previous);
-        this.notify();
+        if (notifyOnRollback) this.notify();
         throw error;
       }
       this.notify();
@@ -651,7 +652,6 @@ export class SubscriptionStore {
       this.disableGracePeriods.delete(id);
       void this
         .mutateAndSave(() => {
-          if (this.disposed) return false;
           if (this.disableGraceVersions.get(id) !== version) return false;
           return this.disableSubscriptionNow(id);
         }, (changed) => changed)
@@ -688,7 +688,8 @@ export class SubscriptionStore {
           this.pruneUnusedArchivedCustomCurrencies();
           return true;
         },
-        (changed) => changed
+        (changed) => changed,
+        false
       );
     } catch (error) {
       if (
@@ -702,6 +703,7 @@ export class SubscriptionStore {
       } else if (previousGraceVersion !== undefined) {
         this.disableGraceVersions.set(id, previousGraceVersion);
       }
+      if (!this.disposed) this.notify();
       throw error;
     }
   }

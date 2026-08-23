@@ -132,5 +132,8 @@ describe("createToggleSwitch", () => {
     );
 
     expect(input.getAttribute("aria-label")).toBe("Price for Netflix");
+    expect(container.children[0]?.children[0]?.getAttribute("aria-label")).toBe(
+      "Edit price for Netflix: 19.99"
+    );
   });
 });
