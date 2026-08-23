@@ -33,15 +33,21 @@ export class AddSubscriptionModal extends Modal {
     contentEl.createEl("h2", { text: "Add subscription" });
 
     new Setting(contentEl).setName("Name").addText((text) =>
-      text.setPlaceholder("ChatGPT").onChange((value) => {
-        this.name = value;
-      })
+      text
+        .setPlaceholder("ChatGPT")
+        .setValue(this.name)
+        .onChange((value) => {
+          this.name = value;
+        })
     );
 
     new Setting(contentEl).setName("Price").addText((text) =>
-      text.setPlaceholder("20").onChange((value) => {
-        this.price = value;
-      })
+      text
+        .setPlaceholder("20")
+        .setValue(this.price)
+        .onChange((value) => {
+          this.price = value;
+        })
     );
 
     new Setting(contentEl).setName("Currency").addDropdown((dropdown) => {
@@ -97,9 +103,12 @@ export class AddSubscriptionModal extends Modal {
       .setName("Service URL")
       .setDesc("Used for favicon lookup. Optional.")
       .addText((text) =>
-        text.setPlaceholder("https://example.com").onChange((value) => {
-          this.serviceUrl = value;
-        })
+        text
+          .setPlaceholder("https://example.com")
+          .setValue(this.serviceUrl)
+          .onChange((value) => {
+            this.serviceUrl = value;
+          })
       );
 
     const disabledSetting = new Setting(contentEl)

@@ -123,9 +123,11 @@ export class SubscriptionsView extends ItemView {
       text: settings.showDisabled ? "Hide disabled" : "Show disabled",
     });
     showDisabledButton.addEventListener("click", () => {
-      const settings = this.getSettings();
-      settings.showDisabled = !settings.showDisabled;
-      void this.store.saveSettings();
+      void this.store
+        .updateSettings((settings) => {
+          settings.showDisabled = !settings.showDisabled;
+        })
+        .catch(() => new Notice("Failed to save disabled-subscription preference"));
     });
 
     const sortButton = toolbar.createEl("button", {
@@ -378,11 +380,11 @@ export class SubscriptionsView extends ItemView {
       this.sortMode = mode;
       this.sortDirection = "ascending";
     }
-    const settings = this.getSettings();
-    settings.sortMode = this.sortMode;
-    settings.sortDirection = this.sortDirection;
     void this.store
-      .saveSettings()
+      .updateSettings((settings) => {
+        settings.sortMode = this.sortMode;
+        settings.sortDirection = this.sortDirection;
+      })
       .catch(() => new Notice("Failed to save sorting preference"));
   }
 

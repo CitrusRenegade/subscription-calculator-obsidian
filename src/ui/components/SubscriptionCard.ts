@@ -20,6 +20,16 @@ import {
   createToggleSwitch,
 } from "./FormControls";
 
+export function toggleSubscriptionEnabled(
+  store: SubscriptionStore,
+  id: string,
+  enabled: boolean
+): void {
+  void store
+    .setSubscriptionEnabled(id, enabled)
+    .catch((e) => new Notice(e instanceof Error ? e.message : "Failed to save subscription status"));
+}
+
 export function renderSubscriptionIcon(
   container: HTMLElement,
   item: SubscriptionItem,
@@ -148,7 +158,7 @@ export function renderSubscriptionCard(
   createToggleSwitch(
     actions,
     item.effectiveStatus === "enabled",
-    (enabled) => void store.setSubscriptionEnabled(item.id, enabled)
+    (enabled) => toggleSubscriptionEnabled(store, item.id, enabled)
   );
 
   if (nextPaymentLabel) {

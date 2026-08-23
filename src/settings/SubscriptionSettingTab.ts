@@ -10,7 +10,7 @@ import {
   getCurrencyAmountMarker,
   getCurrencySelectLabel,
 } from "../money/currencyDisplay";
-import type { CurrencyMeta, FaviconProvider, OpenMode } from "../types";
+import type { CurrencyMeta, FaviconProvider, OpenMode, PluginSettings } from "../types";
 
 function createTextFragment(text: string): DocumentFragment {
   const fragment = createFragment();
@@ -69,6 +69,18 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     this.renderContents();
   }
 
+  private async updateSettings(
+    mutation: (settings: PluginSettings) => void
+  ): Promise<void> {
+    try {
+      await this.plugin.store.updateSettings(mutation);
+    } catch (error) {
+      console.error("Failed to save setting:", error);
+      new Notice("Failed to save setting");
+      this.updateSettingsView();
+    }
+  }
+
   private renderContents(): void {
     const { containerEl } = this;
     containerEl.empty();
@@ -83,9 +95,10 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           .addOption("right-sidebar", "Right sidebar")
           .addOption("main-tab", "Main tab")
           .setValue(this.plugin.data.settings.openMode)
-          .onChange(async (value) => {
-            this.plugin.data.settings.openMode = value as OpenMode;
-            await this.plugin.savePluginData();
+          .onChange((value) => {
+            void this.updateSettings((settings) => {
+              settings.openMode = value as OpenMode;
+            });
           })
       );
 
@@ -94,9 +107,10 @@ export class SubscriptionSettingTab extends PluginSettingTab {
         dropdown.addOption(currency.code, getCurrencySelectLabel(currency));
       }
       dropdown.setValue(this.plugin.currencyRegistry.getDefault().code);
-      dropdown.onChange(async (value) => {
-        this.plugin.data.settings.defaultCurrency = value;
-        await this.plugin.store.saveSettings();
+      dropdown.onChange((value) => {
+        void this.updateSettings((settings) => {
+          settings.defaultCurrency = value;
+        });
       });
     });
 
@@ -108,9 +122,10 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.data.settings.moneyDisplayPrecision === 1)
-          .onChange(async (value) => {
-            this.plugin.data.settings.moneyDisplayPrecision = value ? 1 : 0;
-            await this.plugin.store.saveSettings();
+          .onChange((value) => {
+            void this.updateSettings((settings) => {
+              settings.moneyDisplayPrecision = value ? 1 : 0;
+            });
           })
       );
 
@@ -120,9 +135,10 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.data.settings.floatingYearlyTotal)
-          .onChange(async (value) => {
-            this.plugin.data.settings.floatingYearlyTotal = value;
-            await this.plugin.store.saveSettings();
+          .onChange((value) => {
+            void this.updateSettings((settings) => {
+              settings.floatingYearlyTotal = value;
+            });
           })
       );
 
@@ -134,10 +150,14 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           .addOption("google-s2", "Google S2")
           .addOption("none", "Disabled")
           .setValue(this.plugin.data.settings.faviconProvider)
-          .onChange(async (value) => {
-            this.plugin.data.settings.faviconProvider = value as FaviconProvider;
-            await this.plugin.savePluginData();
-            refreshAllButton?.setDisabled(value === "none");
+          .onChange((value) => {
+            void this.updateSettings((settings) => {
+              settings.faviconProvider = value as FaviconProvider;
+            }).then(() => {
+              refreshAllButton?.setDisabled(
+                this.plugin.data.settings.faviconProvider === "none"
+              );
+            });
           })
       );
 
@@ -152,9 +172,10 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.data.settings.confirmBeforeDelete)
-          .onChange(async (value) => {
-            this.plugin.data.settings.confirmBeforeDelete = value;
-            await this.plugin.savePluginData();
+          .onChange((value) => {
+            void this.updateSettings((settings) => {
+              settings.confirmBeforeDelete = value;
+            });
           })
       );
 

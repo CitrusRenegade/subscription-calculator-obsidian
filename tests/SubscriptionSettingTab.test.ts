@@ -256,25 +256,26 @@ const { SubscriptionSettingTab } = await import(
 );
 
 function createPlugin() {
-  return {
-    data: {
-      settings: {
-        openMode: "right-sidebar",
-        defaultCurrency: "USD",
-        faviconProvider: "google-s2",
-        confirmBeforeDelete: true,
-        moneyDisplayPrecision: 0,
-        floatingYearlyTotal: false,
-      },
-      customCurrencies: [] as Array<{
-        amountMarker?: string;
-        code: string;
-        isArchived?: boolean;
-        label: string;
-        scale: number;
-        source: "custom";
-      }>,
+  const data = {
+    settings: {
+      openMode: "right-sidebar",
+      defaultCurrency: "USD",
+      faviconProvider: "google-s2",
+      confirmBeforeDelete: true,
+      moneyDisplayPrecision: 0,
+      floatingYearlyTotal: false,
     },
+    customCurrencies: [] as Array<{
+      amountMarker?: string;
+      code: string;
+      isArchived?: boolean;
+      label: string;
+      scale: number;
+      source: "custom";
+    }>,
+  };
+  return {
+    data,
     currencyRegistry: {
       listSelectable: () => [
         { code: "USD", label: "USD", amountMarker: "$", scale: 2, source: "builtin" },
@@ -292,7 +293,9 @@ function createPlugin() {
       deleteCustomCurrency: vi.fn(),
       isCurrencyUsed: () => false,
       refreshAllIcons: vi.fn(),
-      saveSettings: vi.fn(),
+      updateSettings: vi.fn(async (mutation: (settings: typeof data.settings) => void) => {
+        mutation(data.settings);
+      }),
       updateCustomCurrency: vi.fn(),
     },
     savePluginData: vi.fn(),
@@ -342,20 +345,20 @@ describe("SubscriptionSettingTab", () => {
     );
     await openMode?.dropdowns[0]?.change("main-tab");
     expect(plugin.data.settings.openMode).toBe("main-tab");
-    expect(plugin.savePluginData).toHaveBeenCalledOnce();
+    expect(plugin.store.updateSettings).toHaveBeenCalledOnce();
 
     const defaultCurrency = settings.instances.find(
       (setting) => setting.name === "Default currency"
     );
     await defaultCurrency?.dropdowns[0]?.change("USD");
-    expect(plugin.store.saveSettings).toHaveBeenCalledOnce();
+    expect(plugin.store.updateSettings).toHaveBeenCalledTimes(2);
 
     const confirmBeforeDelete = settings.instances.find(
       (setting) => setting.name === "Confirm before delete"
     );
     await confirmBeforeDelete?.toggles[0]?.change(false);
     expect(plugin.data.settings.confirmBeforeDelete).toBe(false);
-    expect(plugin.savePluginData).toHaveBeenCalledTimes(2);
+    expect(plugin.store.updateSettings).toHaveBeenCalledTimes(3);
   });
 
   it("refreshes the manual settings after custom-currency actions", async () => {

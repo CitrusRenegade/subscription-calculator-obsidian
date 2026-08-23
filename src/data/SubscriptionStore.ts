@@ -79,14 +79,51 @@ function isBillingPeriod(value: string): value is BillingPeriod {
   );
 }
 
+function isValidCustomBillingPeriodDays(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 function isMvpCurrencyScale(value: number): boolean {
   return value === 0 || value === 2;
+}
+
+function clonePluginData(data: PluginData): PluginData {
+  const iconCache: PluginData["iconCache"] = {};
+  for (const [key, icon] of Object.entries(data.iconCache)) {
+    Object.defineProperty(iconCache, key, {
+      value: { ...icon },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  return {
+    schemaVersion: data.schemaVersion,
+    settings: { ...data.settings },
+    subscriptions: data.subscriptions.map((item) => ({
+      ...item,
+      price: { ...item.price },
+      icon: { ...item.icon },
+    })),
+    iconCache,
+    customCurrencies: data.customCurrencies.map((currency) => ({ ...currency })),
+  };
+}
+
+function restorePluginData(target: PluginData, replacement: PluginData): void {
+  target.schemaVersion = replacement.schemaVersion;
+  target.settings = replacement.settings;
+  target.subscriptions = replacement.subscriptions;
+  target.iconCache = replacement.iconCache;
+  target.customCurrencies = replacement.customCurrencies;
 }
 
 export class SubscriptionStore {
   private readonly listeners = new Set<() => void>();
   private readonly disableGracePeriods = new Map<string, DisableGracePeriod>();
   private readonly disableGraceVersions = new Map<string, number>();
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly data: PluginData,
@@ -170,10 +207,38 @@ export class SubscriptionStore {
     }
   }
 
-  async saveSettings(): Promise<void> {
-    this.ensureDefaultCurrencyValid();
-    await this.saveData();
-    this.notify();
+  private async mutateAndSave<T>(
+    mutation: () => T | Promise<T>,
+    shouldSave: (result: T) => boolean = () => true
+  ): Promise<T> {
+    const operation = this.writeQueue.then(async () => {
+      const previous = clonePluginData(this.data);
+      try {
+        const result = await mutation();
+        if (!shouldSave(result)) return result;
+        await this.saveData();
+        this.notify();
+        return result;
+      } catch (error) {
+        restorePluginData(this.data, previous);
+        this.notify();
+        throw error;
+      }
+    });
+    this.writeQueue = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    return operation;
+  }
+
+  async updateSettings(
+    mutation: (settings: PluginData["settings"]) => void
+  ): Promise<void> {
+    await this.mutateAndSave(() => {
+      mutation(this.data.settings);
+      this.ensureDefaultCurrencyValid();
+    });
   }
 
   private findItem(id: string): SubscriptionItem | null {
@@ -245,155 +310,154 @@ export class SubscriptionStore {
   }
 
   async addSubscription(input: AddSubscriptionInput): Promise<void> {
-    const name = input.name.trim();
-    if (!name) throw new Error("Subscription name is required.");
+    await this.mutateAndSave(async () => {
+      const name = input.name.trim();
+      if (!name) throw new Error("Subscription name is required.");
 
-    const currencyCode = input.currencyCode.trim().toUpperCase();
-    const money = parseMoneyInput(input.priceText, currencyCode, this.currencyRegistry);
-    if (!money) throw new Error("Enter a valid price for the selected currency.");
+      const currencyCode = input.currencyCode.trim().toUpperCase();
+      const money = parseMoneyInput(input.priceText, currencyCode, this.currencyRegistry);
+      if (!money) throw new Error("Enter a valid price for the selected currency.");
 
-    if (!isBillingPeriod(input.billingPeriod)) {
-      throw new Error("Select a valid billing period.");
-    }
-    const startDate = input.startDate?.trim()
-      ? parseDateOnly(input.startDate) ?? undefined
-      : undefined;
-    if (input.startDate?.trim() && !startDate) {
-      throw new Error("Select a valid start date.");
-    }
-    if (
-      input.billingPeriod === "custom" &&
-      (!input.customBillingPeriodDays || input.customBillingPeriodDays <= 0)
-    ) {
-      throw new Error("Custom billing period must be greater than 0 days.");
-    }
+      if (!isBillingPeriod(input.billingPeriod)) {
+        throw new Error("Select a valid billing period.");
+      }
+      const startDate = input.startDate?.trim()
+        ? parseDateOnly(input.startDate) ?? undefined
+        : undefined;
+      if (input.startDate?.trim() && !startDate) {
+        throw new Error("Select a valid start date.");
+      }
+      if (
+        input.billingPeriod === "custom" &&
+        !isValidCustomBillingPeriodDays(input.customBillingPeriodDays)
+      ) {
+        throw new Error("Custom billing period must be greater than 0 days.");
+      }
 
-    const today = todayLocalDate(this.clock);
-    const status = input.status === "disabled" ? "disabled" : "enabled";
-    const item: SubscriptionItem = {
-      id: createId(),
-      name,
-      status,
-      price: money,
-      startDate,
-      billingPeriod: input.billingPeriod,
-      customBillingPeriodDays:
-        input.billingPeriod === "custom" ? input.customBillingPeriodDays : undefined,
-      serviceUrl: normalizeUrlInput(input.serviceUrl),
-      icon: {
-        mode: input.icon?.mode ?? "auto",
-        emoji: input.icon?.emoji?.trim() || undefined,
-      },
-      createdOn: today,
-      updatedOn: today,
-    };
+      const today = todayLocalDate(this.clock);
+      const status = input.status === "disabled" ? "disabled" : "enabled";
+      const item: SubscriptionItem = {
+        id: createId(),
+        name,
+        status,
+        price: money,
+        startDate,
+        billingPeriod: input.billingPeriod,
+        customBillingPeriodDays:
+          input.billingPeriod === "custom" ? input.customBillingPeriodDays : undefined,
+        serviceUrl: normalizeUrlInput(input.serviceUrl),
+        icon: {
+          mode: input.icon?.mode ?? "auto",
+          emoji: input.icon?.emoji?.trim() || undefined,
+        },
+        createdOn: today,
+        updatedOn: today,
+      };
 
-    this.data.subscriptions.push(item);
-    await this.tryEnsureIcon(item);
-    await this.saveData();
-    this.notify();
+      this.data.subscriptions.push(item);
+      await this.tryEnsureIcon(item);
+    });
   }
 
   async addCustomCurrency(input: CustomCurrencyInput): Promise<void> {
-    const normalized = normalizeNewCustomCurrencyInput(input);
-    if (!normalized) throw new Error("Enter valid custom currency details.");
+    await this.mutateAndSave(() => {
+      const normalized = normalizeNewCustomCurrencyInput(input);
+      if (!normalized) throw new Error("Enter valid custom currency details.");
 
-    let code = createCustomCurrencyCode();
-    while (this.currencyRegistry.get(code)) {
-      code = createCustomCurrencyCode();
-    }
+      let code = createCustomCurrencyCode();
+      while (this.currencyRegistry.get(code)) {
+        code = createCustomCurrencyCode();
+      }
 
-    const currency: CurrencyMeta = {
-      code,
-      label: normalized.label,
-      amountMarker: normalized.amountMarker,
-      scale: normalized.scale,
-      source: "custom",
-    };
-    this.assertUniqueCurrencyDisplay(currency);
-    this.data.customCurrencies.push(currency);
-
-    await this.saveData();
-    this.notify();
+      const currency: CurrencyMeta = {
+        code,
+        label: normalized.label,
+        amountMarker: normalized.amountMarker,
+        scale: normalized.scale,
+        source: "custom",
+      };
+      this.assertUniqueCurrencyDisplay(currency);
+      this.data.customCurrencies.push(currency);
+    });
   }
 
   async cleanupUnusedArchivedCustomCurrencies(): Promise<void> {
-    const defaultChanged = this.ensureDefaultCurrencyValid();
-    const pruned = this.pruneUnusedArchivedCustomCurrencies();
-    if (!defaultChanged && !pruned) return;
-
-    await this.saveData();
-    this.notify();
+    await this.mutateAndSave(
+      () => {
+        const defaultChanged = this.ensureDefaultCurrencyValid();
+        const pruned = this.pruneUnusedArchivedCustomCurrencies();
+        return defaultChanged || pruned;
+      },
+      (changed) => changed
+    );
   }
 
   async updateCustomCurrency(
     code: string,
     patch: Partial<CustomCurrencyInput>
   ): Promise<void> {
-    const currency = this.findCustomCurrency(code);
-    if (!currency) throw new Error("Custom currency not found.");
+    await this.mutateAndSave(() => {
+      const currency = this.findCustomCurrency(code);
+      if (!currency) throw new Error("Custom currency not found.");
+      const next = normalizeCustomCurrencyInput({
+        label: patch.label ?? currency.label,
+        amountMarker: patch.amountMarker ?? currency.amountMarker,
+        scale: patch.scale ?? currency.scale,
+      });
+      if (!next) throw new Error("Enter valid custom currency details.");
 
-    const next = normalizeCustomCurrencyInput({
-      label: patch.label ?? currency.label,
-      amountMarker: patch.amountMarker ?? currency.amountMarker,
-      scale: patch.scale ?? currency.scale,
+      if (this.isCurrencyUsed(currency.code) && next.scale !== currency.scale) {
+        throw new Error("Price format cannot be changed while this currency is used.");
+      }
+      const preservesLegacyScale =
+        !isMvpCurrencyScale(currency.scale) && next.scale === currency.scale;
+      if (!preservesLegacyScale && !isMvpCurrencyScale(next.scale)) {
+        throw new Error("Price format must use whole numbers or decimals.");
+      }
+
+      this.assertUniqueCurrencyDisplay(
+        {
+          code: currency.code,
+          label: next.label,
+          amountMarker: next.amountMarker,
+          scale: next.scale,
+          source: "custom",
+        },
+        currency.code
+      );
+
+      currency.label = next.label;
+      currency.amountMarker = next.amountMarker;
+      currency.scale = next.scale;
+
+      this.ensureDefaultCurrencyValid();
     });
-    if (!next) throw new Error("Enter valid custom currency details.");
-
-    if (this.isCurrencyUsed(currency.code) && next.scale !== currency.scale) {
-      throw new Error("Price format cannot be changed while this currency is used.");
-    }
-    const preservesLegacyScale =
-      !isMvpCurrencyScale(currency.scale) && next.scale === currency.scale;
-    if (!preservesLegacyScale && !isMvpCurrencyScale(next.scale)) {
-      throw new Error("Price format must use whole numbers or decimals.");
-    }
-
-    this.assertUniqueCurrencyDisplay(
-      {
-        code: currency.code,
-        label: next.label,
-        amountMarker: next.amountMarker,
-        scale: next.scale,
-        source: "custom",
-      },
-      currency.code
-    );
-
-    currency.label = next.label;
-    currency.amountMarker = next.amountMarker;
-    currency.scale = next.scale;
-
-    this.ensureDefaultCurrencyValid();
-    await this.saveData();
-    this.notify();
   }
 
   async archiveCustomCurrency(code: string): Promise<void> {
-    const currency = this.findCustomCurrency(code);
-    if (!currency) throw new Error("Custom currency not found.");
-    currency.isArchived = true;
-    this.ensureDefaultCurrencyValid();
-    this.pruneUnusedArchivedCustomCurrencies();
-    await this.saveData();
-    this.notify();
+    await this.mutateAndSave(() => {
+      const currency = this.findCustomCurrency(code);
+      if (!currency) throw new Error("Custom currency not found.");
+      currency.isArchived = true;
+      this.ensureDefaultCurrencyValid();
+      this.pruneUnusedArchivedCustomCurrencies();
+    });
   }
 
   async deleteCustomCurrency(code: string): Promise<void> {
-    const currency = this.findCustomCurrency(code);
-    if (!currency) throw new Error("Custom currency not found.");
+    await this.mutateAndSave(() => {
+      const currency = this.findCustomCurrency(code);
+      if (!currency) throw new Error("Custom currency not found.");
+      if (this.isCurrencyUsed(currency.code)) {
+        currency.isArchived = true;
+      } else {
+        this.data.customCurrencies = this.data.customCurrencies.filter(
+          (item) => normalizeCurrencyCode(item.code) !== normalizeCurrencyCode(currency.code)
+        );
+      }
 
-    if (this.isCurrencyUsed(currency.code)) {
-      currency.isArchived = true;
-    } else {
-      this.data.customCurrencies = this.data.customCurrencies.filter(
-        (item) => normalizeCurrencyCode(item.code) !== normalizeCurrencyCode(currency.code)
-      );
-    }
-
-    this.ensureDefaultCurrencyValid();
-    await this.saveData();
-    this.notify();
+      this.ensureDefaultCurrencyValid();
+    });
   }
 
   isCurrencyUsed(code: string): boolean {
@@ -407,87 +471,88 @@ export class SubscriptionStore {
     id: string,
     patch: UpdateSubscriptionInput
   ): Promise<void> {
-    const item = this.findItem(id);
-    if (!item) return;
-
-    if (typeof patch.name === "string") {
-      const name = patch.name.trim();
-      if (!name) throw new Error("Subscription name is required.");
-      item.name = name;
-    }
-
-    const nextCurrency = patch.currencyCode?.trim().toUpperCase() ?? item.price.currencyCode;
-    if (typeof patch.priceText === "string" || patch.currencyCode) {
-      const priceText =
-        typeof patch.priceText === "string"
-          ? patch.priceText
-          : moneyToInputValue(item.price, this.currencyRegistry);
-      const money = parseMoneyInput(priceText, nextCurrency, this.currencyRegistry);
-      if (!money) throw new Error("Enter a valid price for the selected currency.");
-      item.price = money;
-    }
-
-    if (patch.billingPeriod) {
-      if (!isBillingPeriod(patch.billingPeriod)) {
-        throw new Error("Select a valid billing period.");
-      }
-      item.billingPeriod = patch.billingPeriod;
+    await this.mutateAndSave(async () => {
+      const item = this.findItem(id);
+      if (!item) return false;
       if (
-        item.billingPeriod === "custom" &&
-        !item.customBillingPeriodDays
+        patch.customBillingPeriodDays !== undefined &&
+        !isValidCustomBillingPeriodDays(patch.customBillingPeriodDays)
       ) {
-        item.customBillingPeriodDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
+        throw new Error("Custom billing period must be greater than 0 days.");
       }
-    }
 
-    if (patch.startDate !== undefined) {
-      const startDate = patch.startDate.trim()
-        ? parseDateOnly(patch.startDate) ?? undefined
-        : undefined;
-      if (patch.startDate.trim() && !startDate) {
-        throw new Error("Select a valid start date.");
+      if (typeof patch.name === "string") {
+        const name = patch.name.trim();
+        if (!name) throw new Error("Subscription name is required.");
+        item.name = name;
       }
-      item.startDate = startDate;
-    }
 
-    if (patch.customBillingPeriodDays !== undefined) {
-      item.customBillingPeriodDays =
-        patch.customBillingPeriodDays > 0 ? patch.customBillingPeriodDays : undefined;
-    }
-    if (item.billingPeriod !== "custom") {
-      item.customBillingPeriodDays = undefined;
-    }
-
-    let shouldRefreshIcon = false;
-    if (patch.serviceUrl !== undefined) {
-      const serviceUrl = normalizeUrlInput(patch.serviceUrl);
-      shouldRefreshIcon = serviceUrl !== item.serviceUrl;
-      item.serviceUrl = serviceUrl;
-      if (shouldRefreshIcon) this.iconService.clearIcon(item);
-    }
-    if (patch.icon) {
-      item.icon = {
-        ...item.icon,
-        ...patch.icon,
-        emoji: patch.icon.emoji?.trim() || undefined,
-      };
-      if (item.icon.mode !== "auto") {
-        this.iconService.clearIcon(item);
+      const nextCurrency =
+        patch.currencyCode?.trim().toUpperCase() ?? item.price.currencyCode;
+      if (typeof patch.priceText === "string" || patch.currencyCode) {
+        const priceText =
+          typeof patch.priceText === "string"
+            ? patch.priceText
+            : moneyToInputValue(item.price, this.currencyRegistry);
+        const money = parseMoneyInput(priceText, nextCurrency, this.currencyRegistry);
+        if (!money) throw new Error("Enter a valid price for the selected currency.");
+        item.price = money;
       }
-      shouldRefreshIcon = item.icon.mode === "auto";
-    }
 
-    item.updatedOn = todayLocalDate(this.clock);
-    if (shouldRefreshIcon) await this.tryEnsureIcon(item);
-    this.pruneUnusedArchivedCustomCurrencies();
-    await this.saveData();
-    this.notify();
+      if (patch.billingPeriod) {
+        if (!isBillingPeriod(patch.billingPeriod)) {
+          throw new Error("Select a valid billing period.");
+        }
+        item.billingPeriod = patch.billingPeriod;
+        if (item.billingPeriod === "custom" && !item.customBillingPeriodDays) {
+          item.customBillingPeriodDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
+        }
+      }
+
+      if (patch.startDate !== undefined) {
+        const startDate = patch.startDate.trim()
+          ? parseDateOnly(patch.startDate) ?? undefined
+          : undefined;
+        if (patch.startDate.trim() && !startDate) {
+          throw new Error("Select a valid start date.");
+        }
+        item.startDate = startDate;
+      }
+
+      if (patch.customBillingPeriodDays !== undefined) {
+        item.customBillingPeriodDays = patch.customBillingPeriodDays;
+      }
+      if (item.billingPeriod !== "custom") {
+        item.customBillingPeriodDays = undefined;
+      }
+
+      let shouldRefreshIcon = false;
+      if (patch.serviceUrl !== undefined) {
+        const serviceUrl = normalizeUrlInput(patch.serviceUrl);
+        shouldRefreshIcon = serviceUrl !== item.serviceUrl;
+        item.serviceUrl = serviceUrl;
+        if (shouldRefreshIcon) this.iconService.clearIcon(item);
+      }
+      if (patch.icon) {
+        item.icon = {
+          ...item.icon,
+          ...patch.icon,
+          emoji: patch.icon.emoji?.trim() || undefined,
+        };
+        if (item.icon.mode !== "auto") {
+          this.iconService.clearIcon(item);
+        }
+        shouldRefreshIcon = item.icon.mode === "auto";
+      }
+
+      item.updatedOn = todayLocalDate(this.clock);
+      if (shouldRefreshIcon) await this.tryEnsureIcon(item);
+      this.pruneUnusedArchivedCustomCurrencies();
+      return true;
+    }, (changed) => changed);
   }
 
   async setSubscriptionEnabled(id: string, enabled: boolean): Promise<void> {
-    const item = this.findItem(id);
-    if (!item) return;
-
     if (enabled) {
       const gracePeriod = this.disableGracePeriods.get(id);
       if (gracePeriod) {
@@ -498,17 +563,23 @@ export class SubscriptionStore {
         return;
       }
 
-      if (item.status === "disabled") {
-        this.nextDisableGraceVersion(id);
-        item.status = "enabled";
-        item.disabledOn = undefined;
-        item.updatedOn = todayLocalDate(this.clock);
-        await this.saveData();
-        this.notify();
-      }
+      await this.mutateAndSave(
+        () => {
+          const item = this.findItem(id);
+          if (!item || item.status !== "disabled") return false;
+          this.nextDisableGraceVersion(id);
+          item.status = "enabled";
+          item.disabledOn = undefined;
+          item.updatedOn = todayLocalDate(this.clock);
+          return true;
+        },
+        (changed) => changed
+      );
       return;
     }
 
+    const item = this.findItem(id);
+    if (!item) return;
     if (item.status === "disabled" || this.disableGracePeriods.has(id)) return;
 
     this.scheduleDisableGracePeriod(id, this.nextDisableGraceVersion(id));
@@ -525,86 +596,81 @@ export class SubscriptionStore {
     const timeoutId = window.setTimeout(() => {
       if (this.disableGracePeriods.get(id)?.version !== version) return;
       this.disableGracePeriods.delete(id);
-      if (!this.disableSubscriptionNow(id)) {
-        this.notify();
-        return;
-      }
-      void this.saveData().catch((e) => {
-        console.error("Failed to save disabled subscription:", e);
-        new Notice("Failed to save disabled subscription");
-      });
-      this.notify();
+      void this
+        .mutateAndSave(() => this.disableSubscriptionNow(id), (changed) => changed)
+        .then((changed) => {
+          if (!changed) this.notify();
+        })
+        .catch((e) => {
+          console.error("Failed to save disabled subscription:", e);
+          new Notice("Failed to save disabled subscription");
+        });
     }, DISABLE_GRACE_PERIOD_MS);
 
     this.disableGracePeriods.set(id, { subscriptionId: id, timeoutId, version });
   }
 
   async deleteSubscription(id: string): Promise<void> {
+    if (!this.findItem(id)) return;
     const gracePeriod = this.disableGracePeriods.get(id);
     if (gracePeriod) {
       window.clearTimeout(gracePeriod.timeoutId);
       this.disableGracePeriods.delete(id);
     }
     this.disableGraceVersions.delete(id);
-    const before = this.data.subscriptions.length;
-    this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
-    if (this.data.subscriptions.length !== before) {
+    await this.mutateAndSave(() => {
+      this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
       this.pruneUnusedArchivedCustomCurrencies();
-      await this.saveData();
-      this.notify();
-    }
+    });
   }
 
   async refreshIcon(id: string): Promise<boolean> {
-    const item = this.findItem(id);
-    if (!item) return false;
-    const refreshed = await this.tryRefreshIcon(item);
-    if (refreshed) {
-      item.updatedOn = todayLocalDate(this.clock);
-      await this.saveData();
-      this.notify();
-    }
-    return refreshed;
+    return this.mutateAndSave(async () => {
+      const item = this.findItem(id);
+      if (!item) return false;
+      const refreshed = await this.tryRefreshIcon(item);
+      if (refreshed) item.updatedOn = todayLocalDate(this.clock);
+      return refreshed;
+    }, (refreshed) => refreshed);
   }
 
   async refreshAllIcons(): Promise<IconRefreshSummary> {
-    const summary: IconRefreshSummary = { refreshed: 0, failed: 0, skipped: 0 };
-    const today = todayLocalDate(this.clock);
+    return this.mutateAndSave(async () => {
+      const summary: IconRefreshSummary = { refreshed: 0, failed: 0, skipped: 0 };
+      const today = todayLocalDate(this.clock);
 
-    for (const item of this.data.subscriptions) {
-      if (item.icon.mode !== "auto" || !item.serviceUrl) {
-        summary.skipped += 1;
-        continue;
-      }
-
-      try {
-        const refreshed = await this.iconService.refreshAutoIcon(item);
-        if (!refreshed) {
+      for (const item of this.data.subscriptions) {
+        if (item.icon.mode !== "auto" || !item.serviceUrl) {
           summary.skipped += 1;
           continue;
         }
-        item.updatedOn = today;
-        summary.refreshed += 1;
-      } catch (e) {
-        console.warn(`Failed to refresh subscription icon for ${item.name}:`, e);
-        summary.failed += 1;
-      }
-    }
 
-    if (summary.refreshed > 0) {
-      await this.saveData();
-      this.notify();
-    }
-    return summary;
+        try {
+          const refreshed = await this.iconService.refreshAutoIcon(item);
+          if (!refreshed) {
+            summary.skipped += 1;
+            continue;
+          }
+          item.updatedOn = today;
+          summary.refreshed += 1;
+        } catch (e) {
+          console.warn(`Failed to refresh subscription icon for ${item.name}:`, e);
+          summary.failed += 1;
+        }
+      }
+
+      return summary;
+    }, (summary) => summary.refreshed > 0);
   }
 
   async clearIcon(id: string): Promise<void> {
-    const item = this.findItem(id);
-    if (!item) return;
-    this.iconService.clearIcon(item);
-    item.updatedOn = todayLocalDate(this.clock);
-    await this.saveData();
-    this.notify();
+    await this.mutateAndSave(() => {
+      const item = this.findItem(id);
+      if (!item) return false;
+      this.iconService.clearIcon(item);
+      item.updatedOn = todayLocalDate(this.clock);
+      return true;
+    }, (changed) => changed);
   }
 
   getVisibleSubscriptions(): SubscriptionViewItem[] {

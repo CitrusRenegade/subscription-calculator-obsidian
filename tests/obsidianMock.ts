@@ -15,6 +15,14 @@ export class MockElement {
     this.children.push(child);
     return child;
   }
+
+  createSpan(): MockElement {
+    const child = new MockElement();
+    this.children.push(child);
+    return child;
+  }
+
+  addEventListener(_event: string, _listener: () => void): void {}
 }
 
 export class App {}
@@ -89,19 +97,26 @@ export class ButtonComponent {
 }
 
 export class DropdownComponent {
+  value = "";
   private onChangeCallback: ((value: string) => void) | undefined;
 
   addOption(_value: string, _display: string): this {
     return this;
   }
 
-  setValue(_value: string): this {
+  setValue(value: string): this {
+    this.value = value;
     return this;
   }
 
   onChange(callback: (value: string) => void): this {
     this.onChangeCallback = callback;
     return this;
+  }
+
+  emitChange(value: string): void {
+    this.value = value;
+    this.onChangeCallback?.(value);
   }
 }
 
@@ -112,6 +127,7 @@ export class Setting {
   readonly controlEl = new MockElement();
   readonly texts: TextComponent[] = [];
   readonly buttons: ButtonComponent[] = [];
+  readonly dropdowns: DropdownComponent[] = [];
   name = "";
 
   constructor(_container: MockElement) {
@@ -139,7 +155,9 @@ export class Setting {
   }
 
   addDropdown(callback: (component: DropdownComponent) => void): this {
-    callback(new DropdownComponent());
+    const component = new DropdownComponent();
+    this.dropdowns.push(component);
+    callback(component);
     return this;
   }
 
@@ -152,5 +170,17 @@ export class Setting {
 }
 
 export class Notice {
-  constructor(readonly message: string) {}
+  static readonly messages: string[] = [];
+
+  constructor(readonly message: string) {
+    Notice.messages.push(message);
+  }
+
+  static reset(): void {
+    Notice.messages.length = 0;
+  }
+}
+
+export async function requestUrl(): Promise<never> {
+  throw new Error("requestUrl was not mocked");
 }

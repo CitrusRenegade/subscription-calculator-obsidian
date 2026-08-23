@@ -51,6 +51,118 @@ describe("subscription store", () => {
     expect(store.getTotalsByCurrency()).toEqual([]);
   });
 
+  it("rejects an invalid custom period update without discarding its saved days", async () => {
+    const data = createDefaultData();
+    const store = createStore(data);
+    await store.addSubscription({
+      name: "Custom service",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "custom",
+      customBillingPeriodDays: 30,
+    });
+
+    await expect(
+      store.updateSubscription(data.subscriptions[0]?.id ?? "", {
+        customBillingPeriodDays: 0,
+      })
+    ).rejects.toThrow("Custom billing period must be greater than 0 days.");
+
+    expect(data.subscriptions[0]?.customBillingPeriodDays).toBe(30);
+  });
+
+  it("rolls a subscription back when its updated data cannot be saved", async () => {
+    const data = createDefaultData();
+    let saveFails = false;
+    const store = createStore(data, async () => {
+      if (saveFails) throw new Error("disk full");
+    });
+    await store.addSubscription({
+      name: "Reliable service",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+
+    saveFails = true;
+    await expect(
+      store.updateSubscription(data.subscriptions[0]?.id ?? "", { priceText: "30" })
+    ).rejects.toThrow("disk full");
+
+    expect(data.subscriptions[0]?.price.amountMinor).toBe(2000);
+  });
+
+  it("does not roll back a later update when an earlier save fails", async () => {
+    const data = createDefaultData();
+    let saveCount = 0;
+    let rejectFirstUpdate: ((reason?: unknown) => void) | undefined;
+    let signalFirstUpdateSave: (() => void) | undefined;
+    const firstUpdateSaveStarted = new Promise<void>((resolve) => {
+      signalFirstUpdateSave = resolve;
+    });
+    const store = createStore(data, async () => {
+      saveCount += 1;
+      if (saveCount !== 2) return;
+      await new Promise<void>((_resolve, reject) => {
+        rejectFirstUpdate = reject;
+        signalFirstUpdateSave?.();
+      });
+    });
+    await store.addSubscription({
+      name: "Reliable service",
+      priceText: "20",
+      currencyCode: "USD",
+      billingPeriod: "monthly",
+    });
+    const id = data.subscriptions[0]?.id ?? "";
+
+    const firstUpdate = store.updateSubscription(id, { priceText: "30" });
+    const secondUpdate = store.updateSubscription(id, { name: "Renamed service" });
+    await firstUpdateSaveStarted;
+    rejectFirstUpdate?.(new Error("disk full"));
+
+    await expect(firstUpdate).rejects.toThrow("disk full");
+    await secondUpdate;
+
+    expect(data.subscriptions[0]).toMatchObject({
+      name: "Renamed service",
+      price: { amountMinor: 2000, currencyCode: "USD" },
+    });
+  });
+
+  it("rolls settings back when they cannot be saved", async () => {
+    const data = createDefaultData();
+    const store = createStore(data, async () => {
+      throw new Error("disk full");
+    });
+
+    await expect(
+      store.updateSettings((settings) => {
+        settings.showDisabled = true;
+      })
+    ).rejects.toThrow("disk full");
+
+    expect(data.settings.showDisabled).toBe(false);
+  });
+
+  it("does not retain a new subscription when its first save fails", async () => {
+    const data = createDefaultData();
+    const store = createStore(data, async () => {
+      throw new Error("disk full");
+    });
+
+    await expect(
+      store.addSubscription({
+        name: "Unsaved service",
+        priceText: "20",
+        currencyCode: "USD",
+        billingPeriod: "monthly",
+      })
+    ).rejects.toThrow("disk full");
+
+    expect(data.subscriptions).toEqual([]);
+  });
+
   it("keeps a pending disable when flushing it cannot be saved", async () => {
     const setTimeout = vi.fn(() => 1);
     const clearTimeout = vi.fn();

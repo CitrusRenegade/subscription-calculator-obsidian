@@ -27,10 +27,15 @@ export class IconService {
 
   clearIcon(item: SubscriptionItem): void {
     const key = item.icon.cacheKey;
-    if (key) {
+    item.icon = { ...item.icon, cacheKey: undefined };
+    if (
+      key &&
+      !this.data.subscriptions.some(
+        (candidate) => candidate !== item && candidate.icon.cacheKey === key
+      )
+    ) {
       delete this.data.iconCache[key];
     }
-    item.icon = { ...item.icon, cacheKey: undefined };
   }
 
   async refreshAutoIcon(item: SubscriptionItem): Promise<boolean> {
@@ -67,4 +72,3 @@ export class IconService {
     return this.refreshAutoIcon(item);
   }
 }
-
