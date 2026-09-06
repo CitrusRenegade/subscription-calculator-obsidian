@@ -363,6 +363,7 @@ describe("SubscriptionSettingTab", () => {
     expect(findDefinition(definitions, "Default currency")?.control).toMatchObject({
       key: "defaultCurrency",
       type: "dropdown",
+      options: { USD: "USD $" },
     });
     expect(findDefinition(definitions, "Custom currencies")?.type).toBe("page");
     expect(

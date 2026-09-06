@@ -106,11 +106,12 @@ export class SubscriptionSettingTab extends PluginSettingTab {
   }
 
   getSettingDefinitions(): SettingDefinitionItem<keyof PluginSettings>[] {
-    const currencyOptions = Object.fromEntries(
-      this.plugin.currencyRegistry
-        .listSelectable()
-        .map((currency) => [currency.code, getCurrencySelectLabel(currency)])
-    );
+    const currencyOptions = this.plugin.currencyRegistry
+      .listSelectable()
+      .reduce<Record<string, string>>((options, currency) => {
+        options[currency.code] = getCurrencySelectLabel(currency);
+        return options;
+      }, {});
 
     return [
       {
