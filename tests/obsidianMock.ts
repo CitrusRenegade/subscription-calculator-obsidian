@@ -73,8 +73,30 @@ export class Plugin {
 
 export class PluginSettingTab {
   readonly containerEl = new MockElement();
+  updateCalls = 0;
 
   constructor(_app: App, _plugin: Plugin) {}
+
+  getSettingDefinitions(): unknown[] {
+    return [];
+  }
+
+  getControlValue(_key: string): unknown {
+    return undefined;
+  }
+
+  setControlValue(_key: string, _value: unknown): void {}
+
+  update(): void {
+    this.updateCalls += 1;
+  }
+}
+
+export class SettingPage {
+  readonly containerEl = new MockElement();
+  title = "";
+
+  display(): void {}
 }
 
 export class ItemView {

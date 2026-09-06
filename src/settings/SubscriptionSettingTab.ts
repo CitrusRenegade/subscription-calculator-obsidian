@@ -3,7 +3,9 @@ import {
   Notice,
   PluginSettingTab,
   Setting,
+  SettingPage,
   type ButtonComponent,
+  type SettingDefinitionItem,
 } from "obsidian";
 import type SubscriptionCalculatorPlugin from "../main";
 import {
@@ -61,167 +63,174 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
-  display(): void {
-    this.renderContents();
+  getControlValue(key: string): unknown {
+    if (key === "moneyDisplayPrecision") {
+      return this.plugin.data.settings.moneyDisplayPrecision === 1;
+    }
+
+    return this.plugin.data.settings[key as keyof PluginSettings];
   }
 
-  private updateSettingsView(): void {
-    this.renderContents();
-  }
-
-  private async updateSettings(
-    mutation: (settings: PluginSettings) => void
-  ): Promise<void> {
+  async setControlValue(key: string, value: unknown): Promise<void> {
     try {
-      await this.plugin.store.updateSettings(mutation);
+      await this.plugin.store.updateSettings((settings) => {
+        switch (key) {
+          case "openMode":
+            settings.openMode = value as OpenMode;
+            return;
+          case "defaultCurrency":
+            settings.defaultCurrency = value as string;
+            return;
+          case "moneyDisplayPrecision":
+            settings.moneyDisplayPrecision = value === true ? 1 : 0;
+            return;
+          case "floatingYearlyTotal":
+            settings.floatingYearlyTotal = value === true;
+            return;
+          case "faviconProvider":
+            settings.faviconProvider = value as FaviconProvider;
+            return;
+          case "confirmBeforeDelete":
+            settings.confirmBeforeDelete = value === true;
+            return;
+          default:
+            throw new Error(`Unknown settings control: ${key}`);
+        }
+      });
+      this.update();
     } catch (error) {
       console.error("Failed to save setting:", error);
       new Notice("Failed to save setting");
-      this.updateSettingsView();
+      this.update();
     }
   }
 
-  private renderContents(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-
-    let refreshAllButton: ButtonComponent | null = null;
-
-    new Setting(containerEl)
-      .setName("Open subscriptions in")
-      .setDesc("The same view is used in both placements.")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("right-sidebar", "Right sidebar")
-          .addOption("main-tab", "Main tab")
-          .setValue(this.plugin.data.settings.openMode)
-          .onChange((value) => {
-            void this.updateSettings((settings) => {
-              settings.openMode = value as OpenMode;
-            });
-          })
-      );
-
-    new Setting(containerEl).setName("Default currency").addDropdown((dropdown) => {
-      for (const currency of this.plugin.currencyRegistry.listSelectable()) {
-        dropdown.addOption(currency.code, getCurrencySelectLabel(currency));
-      }
-      dropdown.setValue(this.plugin.currencyRegistry.getDefault().code);
-      dropdown.onChange((value) => {
-        void this.updateSettings((settings) => {
-          settings.defaultCurrency = value;
-        });
-      });
-    });
-
-    new Setting(containerEl)
-      .setName("More precise totals")
-      .setDesc(
-        "Show totals to one decimal place instead of rounding to whole numbers (disabled by default)."
-      )
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.data.settings.moneyDisplayPrecision === 1)
-          .onChange((value) => {
-            void this.updateSettings((settings) => {
-              settings.moneyDisplayPrecision = value ? 1 : 0;
-            });
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Total position")
-      .setDesc("Off: top (default). On: bottom.")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.data.settings.floatingYearlyTotal)
-          .onChange((value) => {
-            void this.updateSettings((settings) => {
-              settings.floatingYearlyTotal = value;
-            });
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Favicon provider")
-      .setDesc("Auto icons are cached in plugin data and are not fetched during normal render.")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("google-s2", "Google S2")
-          .addOption("none", "Disabled")
-          .setValue(this.plugin.data.settings.faviconProvider)
-          .onChange((value) => {
-            void this.updateSettings((settings) => {
-              settings.faviconProvider = value as FaviconProvider;
-            }).then(() => {
-              refreshAllButton?.setDisabled(
-                this.plugin.data.settings.faviconProvider === "none"
-              );
-            });
-          })
-      );
-
-    refreshAllButton = this.addRefreshAllIconsButton(
-      new Setting(containerEl)
-        .setName("Refresh all icons")
-        .setDesc("Refetches and caches icons for subscriptions using auto favicon and a service URL.")
+  getSettingDefinitions(): SettingDefinitionItem<keyof PluginSettings>[] {
+    const currencyOptions = Object.fromEntries(
+      this.plugin.currencyRegistry
+        .listSelectable()
+        .map((currency) => [currency.code, getCurrencySelectLabel(currency)])
     );
 
-    new Setting(containerEl)
-      .setName("Confirm before delete")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.data.settings.confirmBeforeDelete)
-          .onChange((value) => {
-            void this.updateSettings((settings) => {
-              settings.confirmBeforeDelete = value;
-            });
-          })
-      );
-
-    new Setting(containerEl).setName("Backup and restore").setHeading();
-    this.renderBackupAndRestoreControls(containerEl);
-
-    this.renderCustomCurrenciesSection(containerEl);
-  }
-
-  private renderBackupAndRestoreControls(containerEl: HTMLElement): void {
-    new Setting(containerEl)
-      .setName("Export backup")
-      .setDesc("Downloads settings, subscriptions, and custom currencies. Favicons are excluded.")
-      .addButton((button) =>
-        button.setButtonText("Export JSON").onClick(() => {
-          try {
-            downloadJson(
-              containerEl.ownerDocument,
-              backupFilename(),
-              this.plugin.exportBackupJson()
-            );
-            new Notice("Backup downloaded");
-          } catch (error) {
-            console.error("Failed to export backup:", error);
-            new Notice("Failed to download backup");
-          }
-        })
-      );
-    new Setting(containerEl)
-      .setName("Restore backup")
-      .setDesc(
-        "Replaces current settings, subscriptions, and custom currencies. It does not add or merge records."
-      )
-      .addButton((button) => {
-        button.buttonEl.addClass("mod-warning");
-        button.setButtonText("Restore JSON").onClick(() => {
-          const input = createDetachedFileInput(containerEl);
-          input.type = "file";
-          input.accept = "application/json,.json";
-          input.addEventListener("change", () => {
-            const file = input.files?.[0];
-            if (file) void this.restoreBackupFile(file, button);
-          });
-          input.click();
-        });
-      });
+    return [
+      {
+        name: "Open subscriptions in",
+        desc: "The same view is used in both placements.",
+        control: {
+          type: "dropdown",
+          key: "openMode",
+          options: {
+            "right-sidebar": "Right sidebar",
+            "main-tab": "Main tab",
+          },
+        },
+      },
+      {
+        name: "Default currency",
+        control: {
+          type: "dropdown",
+          key: "defaultCurrency",
+          options: currencyOptions,
+        },
+      },
+      {
+        name: "More precise totals",
+        desc: "Show totals to one decimal place instead of rounding to whole numbers (disabled by default).",
+        control: {
+          type: "toggle",
+          key: "moneyDisplayPrecision",
+        },
+      },
+      {
+        name: "Total position",
+        desc: "Off: top (default). On: bottom.",
+        control: {
+          type: "toggle",
+          key: "floatingYearlyTotal",
+        },
+      },
+      {
+        name: "Favicon provider",
+        desc: "Auto icons are cached in plugin data and are not fetched during normal render.",
+        control: {
+          type: "dropdown",
+          key: "faviconProvider",
+          options: {
+            "google-s2": "Google S2",
+            none: "Disabled",
+          },
+        },
+      },
+      {
+        name: "Refresh all icons",
+        desc: "Refetches and caches icons for subscriptions using auto favicon and a service URL.",
+        render: (setting) => {
+          this.addRefreshAllIconsButton(setting);
+        },
+      },
+      {
+        name: "Confirm before delete",
+        control: {
+          type: "toggle",
+          key: "confirmBeforeDelete",
+        },
+      },
+      {
+        type: "group",
+        heading: "Backup and restore",
+        items: [
+          {
+            name: "Export backup",
+            desc: "Downloads settings, subscriptions, and custom currencies. Favicons are excluded.",
+            render: (setting) => {
+              setting.addButton((button) =>
+                button.setButtonText("Export JSON").onClick(() => {
+                  try {
+                    downloadJson(
+                      this.containerEl.ownerDocument,
+                      backupFilename(),
+                      this.plugin.exportBackupJson()
+                    );
+                    new Notice("Backup downloaded");
+                  } catch (error) {
+                    console.error("Failed to export backup:", error);
+                    new Notice("Failed to download backup");
+                  }
+                })
+              );
+            },
+          },
+          {
+            name: "Restore backup",
+            desc: "Replaces current settings, subscriptions, and custom currencies. It does not add or merge records.",
+            render: (setting) => {
+              setting.addButton((button) => {
+                button.buttonEl.addClass("mod-warning");
+                button.setButtonText("Restore JSON").onClick(() => {
+                  const input = createDetachedFileInput(this.containerEl);
+                  input.type = "file";
+                  input.accept = "application/json,.json";
+                  input.addEventListener("change", () => {
+                    const file = input.files?.[0];
+                    if (file) void this.restoreBackupFile(file, button);
+                  });
+                  input.click();
+                });
+              });
+            },
+          },
+        ],
+      },
+      {
+        type: "page",
+        name: "Custom currencies",
+        desc: "Create and manage currencies used by subscriptions.",
+        page: () =>
+          new CustomCurrenciesSettingsPage(this.plugin, () => {
+            this.update();
+          }),
+      },
+    ];
   }
 
   private addRefreshAllIconsButton(setting: Setting): ButtonComponent {
@@ -238,8 +247,8 @@ export class SubscriptionSettingTab extends PluginSettingTab {
             new Notice(
               `Icons: ${result.refreshed} refreshed, ${result.failed} failed, ${result.skipped} skipped`
             );
-          } catch (e) {
-            console.error("Failed to refresh all subscription icons:", e);
+          } catch (error) {
+            console.error("Failed to refresh all subscription icons:", error);
             new Notice("Failed to refresh all icons");
           } finally {
             button
@@ -283,7 +292,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       new Notice(
         `Backup restored: ${report.subscriptions.imported} subscriptions and ${report.customCurrencies.imported} custom currencies imported; ${report.subscriptions.skipped + report.customCurrencies.skipped} records skipped.`
       );
-      this.updateSettingsView();
+      this.update();
     } catch (error) {
       console.error("Failed to restore backup:", error);
       new Notice(error instanceof Error ? error.message : "Failed to restore backup");
@@ -291,20 +300,25 @@ export class SubscriptionSettingTab extends PluginSettingTab {
       button.setButtonText("Restore JSON").setDisabled(false);
     }
   }
+}
 
-  private renderCustomCurrenciesSection(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName("Custom currencies").setHeading();
-    this.renderCustomCurrenciesContent(containerEl);
+class CustomCurrenciesSettingsPage extends SettingPage {
+  title = "Custom currencies";
+
+  constructor(
+    private readonly plugin: SubscriptionCalculatorPlugin,
+    private readonly refreshSettingsTab: () => void
+  ) {
+    super();
   }
 
-  private renderCustomCurrenciesContent(
-    containerEl: HTMLElement
-  ): void {
-    this.renderCustomCurrencyForm(containerEl);
+  display(): void {
+    this.containerEl.empty();
+    this.renderCustomCurrencyForm(this.containerEl);
 
     const customCurrencies = this.plugin.data.customCurrencies;
     if (customCurrencies.length === 0) {
-      containerEl.createDiv({
+      this.containerEl.createDiv({
         cls: "subscription-calculator-settings-note",
         text: "No custom currencies yet.",
       });
@@ -312,8 +326,13 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     }
 
     for (const currency of customCurrencies) {
-      this.renderCustomCurrencyForm(containerEl, currency);
+      this.renderCustomCurrencyForm(this.containerEl, currency);
     }
+  }
+
+  private refreshAfterCustomCurrencyChange(): void {
+    this.refreshSettingsTab();
+    this.display();
   }
 
   private renderCustomCurrencyForm(
@@ -336,8 +355,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     let amountMarker = currency?.amountMarker ?? "";
     let scale = currency?.scale ?? 2;
     const originalScale = scale;
-    const hasAdvancedPrecision =
-      isEdit && originalScale !== 0 && originalScale !== 2;
+    const hasAdvancedPrecision = isEdit && originalScale !== 0 && originalScale !== 2;
 
     if (isEdit) {
       const status = [
@@ -455,9 +473,9 @@ export class SubscriptionSettingTab extends PluginSettingTab {
               scale,
             });
             new Notice("Custom currency saved");
-            this.updateSettingsView();
-          } catch (e) {
-            new Notice(e instanceof Error ? e.message : "Failed to save currency");
+            this.refreshAfterCustomCurrencyChange();
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : "Failed to save currency");
           }
         })
       );
@@ -467,9 +485,9 @@ export class SubscriptionSettingTab extends PluginSettingTab {
           try {
             await this.plugin.store.deleteCustomCurrency(currency.code);
             new Notice(isUsed ? "Currency archived" : "Currency deleted");
-            this.updateSettingsView();
-          } catch (e) {
-            new Notice(e instanceof Error ? e.message : "Failed to remove currency");
+            this.refreshAfterCustomCurrencyChange();
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : "Failed to remove currency");
           }
         });
       });
@@ -481,9 +499,9 @@ export class SubscriptionSettingTab extends PluginSettingTab {
         try {
           await this.plugin.store.addCustomCurrency({ label, amountMarker, scale });
           new Notice("Custom currency added");
-          this.updateSettingsView();
-        } catch (e) {
-          new Notice(e instanceof Error ? e.message : "Failed to add currency");
+          this.refreshAfterCustomCurrencyChange();
+        } catch (error) {
+          new Notice(error instanceof Error ? error.message : "Failed to add currency");
         }
       })
     );
