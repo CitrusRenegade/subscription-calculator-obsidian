@@ -39,12 +39,7 @@ src/
         ├── SubscriptionSummaryTable.ts
         └── SummaryHeader.ts
 
-tests/
-├── currencyIcon.test.ts            Currency icon selection
-├── dateOnly.test.ts                Local date-only helpers
-├── money.test.ts                   Money parsing, formatting, and totals
-├── paymentSchedule.test.ts         Next-payment calculations
-└── subscriptionSort.test.ts        Subscription sorting
+tests/                              Unit and integration tests across store, UI, lifecycle, migrations, icons, styling, and build support
 ```
 
 ## `src/data/SubscriptionStore.ts`
@@ -77,5 +72,4 @@ Clearing or replacing an icon must keep those two sides consistent.
 
 ## `tests/`
 
-Tests currently cover pure calculation and sorting modules. Store timers, persistence,
-migrations, and Obsidian UI behavior do not have dedicated tests.
+Tests cover calculation, store and migration behavior, plugin lifecycle, settings, dialogs, cards, icons, styling, backup, and build support. Check the current `tests/*.test.ts` files for exact coverage; Obsidian visual behavior still needs a configured live test vault.
