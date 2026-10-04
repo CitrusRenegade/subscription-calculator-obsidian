@@ -14,6 +14,7 @@
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "build:reload": "npm run build && node esbuild.config.mjs --reload-only",
     "test": "tsc --noEmit --skipLibCheck --project tsconfig.test.json && vitest run",
+    "test:regressions": "node scripts/check-test-regressions.mjs",
     "lint:obsidian": "eslint src/ tests/",
     "check": "npm test && npm run build && npm run lint:obsidian",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
@@ -24,6 +25,7 @@
     "esbuild": "^0.28.0",
     "eslint": "^10.10.0",
     "eslint-plugin-obsidianmd": "^0.4.2",
+    "jsdom": "26.1.0",
     "obsidian": "1.13.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.6"

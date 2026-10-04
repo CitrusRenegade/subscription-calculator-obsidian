@@ -1,95 +1,63 @@
-import { Notice } from "obsidian";
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
-import {
-  setSubscriptionCardDeletionPending,
-  toggleSubscriptionEnabled,
-  watchNextPaymentCollision,
-} from "../src/ui/components/SubscriptionCard";
+import { Notice, installObsidianDomHelpers, resetObsidianDom } from "./helpers/obsidianDom";
+vi.mock("obsidian", () => import("./helpers/obsidianDom"));
+import { setSubscriptionCardDeletionPending, toggleSubscriptionEnabled, watchNextPaymentCollision } from "../src/ui/components/SubscriptionCard";
 
-class FakeCard {
-  readonly classes = new Set<string>();
-  readonly attributes = new Map<string, string>();
-  readonly controls = [{ disabled: false }, { disabled: false }];
-  readonly classList = {
-    toggle: (className: string, enabled: boolean) => {
-      if (enabled) this.classes.add(className);
-      else this.classes.delete(className);
-    },
-  };
+describe("subscription card behavior", () => {
+  beforeEach(() => resetObsidianDom());
 
-  querySelectorAll(): Array<{ disabled: boolean }> {
-    return this.controls;
-  }
-
-  setAttribute(name: string, value: string): void {
-    this.attributes.set(name, value);
-  }
-
-  removeAttribute(name: string): void {
-    this.attributes.delete(name);
-  }
-}
-
-describe("toggleSubscriptionEnabled", () => {
   it("shows the save failure from a status toggle", async () => {
-    const notices = Notice as unknown as {
-      messages: string[];
-      reset(): void;
-    };
-    notices.reset();
-    const store = {
-      setSubscriptionEnabled: vi.fn().mockRejectedValue(new Error("disk full")),
-    } as unknown as SubscriptionStore;
-
+    const store = { setSubscriptionEnabled: vi.fn().mockRejectedValue(new Error("disk full")) } as unknown as SubscriptionStore;
     toggleSubscriptionEnabled(store, "subscription-id", false);
-    await Promise.resolve();
-
-    expect(notices.messages).toEqual(["disk full"]);
+    await vi.waitFor(() => expect(Notice.messages).toEqual(["disk full"]));
   });
 
-  it("blocks card controls while a confirmed deletion is saving", () => {
-    const card = new FakeCard();
-
-    setSubscriptionCardDeletionPending(card as unknown as HTMLElement, true);
-
-    expect(card.controls.every((control) => control.disabled)).toBe(true);
-    expect(card.attributes.get("aria-busy")).toBe("true");
-    expect(card.classes.has("is-deleting")).toBe(true);
-
-    setSubscriptionCardDeletionPending(card as unknown as HTMLElement, false);
-
-    expect(card.controls.some((control) => control.disabled)).toBe(false);
-    expect(card.attributes.has("aria-busy")).toBe(false);
-    expect(card.classes.has("is-deleting")).toBe(false);
+  it("blocks native card controls while deletion saves and enables them on recovery", () => {
+    const card = document.body.createDiv();
+    const button = card.createEl("button");
+    const input = card.createEl("input");
+    const select = card.createEl("select");
+    const click = vi.fn();
+    button.addEventListener("click", click);
+    setSubscriptionCardDeletionPending(card, true);
+    expect([button, input, select].every(control => control.disabled)).toBe(true);
+    expect(card.getAttribute("aria-busy")).toBe("true");
+    expect(card.classList.contains("is-deleting")).toBe(true);
+    button.click();
+    expect(click).not.toHaveBeenCalled();
+    setSubscriptionCardDeletionPending(card, false);
+    expect([button, input, select].every(control => !control.disabled)).toBe(true);
+    expect(card.hasAttribute("aria-busy")).toBe(false);
+    expect(card.classList.contains("is-deleting")).toBe(false);
+    button.click();
+    expect(click).toHaveBeenCalledOnce();
   });
 
-  it("disconnects card layout observers before the card is removed", () => {
+  it("disconnects and cancels observers in the card's owner window", () => {
+    const iframe = document.body.createEl("iframe");
+    const owner = iframe.contentWindow!;
+    installObsidianDomHelpers(owner);
+    const card = owner.document.body.createDiv();
     const observe = vi.fn();
     const disconnect = vi.fn();
-    const requestAnimationFrame = vi.fn(() => 42);
-    const cancelAnimationFrame = vi.fn();
-    class FakeResizeObserver {
+    class Observer {
       constructor(_callback: ResizeObserverCallback) {}
-
       observe = observe;
       disconnect = disconnect;
     }
-    const cardWindow = {
-      ResizeObserver: FakeResizeObserver,
-      requestAnimationFrame,
-      cancelAnimationFrame,
-    } as unknown as Window;
-    const card = {
-      ownerDocument: { defaultView: cardWindow },
-      isConnected: true,
-    } as unknown as HTMLElement;
-
+    Object.defineProperty(owner, "ResizeObserver", { configurable: true, value: Observer });
+    const request = vi.spyOn(owner, "requestAnimationFrame").mockReturnValue(42);
+    const cancel = vi.spyOn(owner, "cancelAnimationFrame");
     const dispose = watchNextPaymentCollision(card, card, card, card);
-
-    expect(observe).toHaveBeenCalledWith(card);
+    expect(observe).toHaveBeenCalledExactlyOnceWith(card);
+    expect(request).toHaveBeenCalledOnce();
+    dispose();
     dispose();
     expect(disconnect).toHaveBeenCalledOnce();
-    expect(cancelAnimationFrame).toHaveBeenCalledWith(42);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(42);
+    request.mockRestore(); cancel.mockRestore();
+    iframe.remove();
   });
 });

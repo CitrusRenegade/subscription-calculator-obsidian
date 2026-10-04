@@ -50,6 +50,7 @@ export class Plugin {
   readonly app = new App();
   readonly registeredViewTypes: string[] = [];
   readonly cliHandlers = new Map<string, (params: Record<string, string>) => string | Promise<string>>();
+  private readonly cleanups: Array<() => void> = [];
 
   registerCliHandler(command: string, _description: string, _flags: unknown,
     handler: (params: Record<string, string>) => string | Promise<string>): void {
@@ -74,12 +75,19 @@ export class Plugin {
   addCommand(_command: unknown): void {}
 
   registerDomEvent(
-    _target: unknown,
-    _event: string,
-    _callback: () => void
-  ): void {}
+    target: EventTarget,
+    event: string,
+    callback: EventListener
+  ): void {
+    target.addEventListener(event, callback);
+    this.register(() => target.removeEventListener(event, callback));
+  }
 
-  register(_cleanup: () => void): void {}
+  register(cleanup: () => void): void { this.cleanups.push(cleanup); }
+
+  runRegisteredCleanups(): void {
+    for (const cleanup of this.cleanups.splice(0).reverse()) cleanup();
+  }
 }
 
 export class PluginSettingTab {

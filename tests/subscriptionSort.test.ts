@@ -23,7 +23,7 @@ function item(
 }
 
 describe("sortSubscriptions", () => {
-  it("resyncs an active view's sort state from restored settings after a store notification", () => {
+  it("reads sort mode and direction from restored settings", () => {
     const restored = getSortStateFromSettings({
       sortMode: "status",
       sortDirection: "ascending",

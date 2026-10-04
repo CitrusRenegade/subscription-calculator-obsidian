@@ -1,150 +1,74 @@
-import { App, Notice, Setting } from "obsidian";
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { App as ObsidianApp } from "obsidian";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
-import type { CurrencyRegistry } from "../src/money/CurrencyRegistry";
 import type { SubscriptionItem } from "../src/types";
+import { BuiltinCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { EditSubscriptionModal } from "../src/ui/EditSubscriptionModal";
-
-type MockText = {
-  emitChange(value: string): void;
-};
-
-type MockButton = {
-  disabled: boolean;
-  buttonText: string;
-  click(): void;
-};
-
-type MockSetting = {
-  name: string;
-  texts: MockText[];
-  buttons: MockButton[];
-  dropdowns: Array<{ emitChange(value: string): void }>;
-};
-
-const mockSettings = Setting as unknown as {
-  instances: MockSetting[];
-  reset(): void;
-};
-
-const notices = Notice as unknown as {
-  messages: string[];
-  reset(): void;
-};
-
-const item: SubscriptionItem = {
-  id: "spotify",
-  name: "Spotify",
-  status: "enabled",
-  price: { amountMinor: 999, currencyCode: "USD" },
-  billingPeriod: "monthly",
-  icon: { mode: "auto" },
-  createdOn: "2026-07-19",
-  updatedOn: "2026-07-19",
-};
-
-describe("EditSubscriptionModal Service URL", () => {
-  beforeEach(() => {
-    mockSettings.reset();
-    notices.reset();
-  });
-
-  it("clears the icon without closing or committing the current draft", async () => {
+import { App, Notice, changeInput, changeSelect, findButton, findSetting, installObsidianDomHelpers, resetObsidianDom } from "./helpers/obsidianDom";
+vi.mock("obsidian", () => import("./helpers/obsidianDom"));
+const item: SubscriptionItem = { id: "spotify", name: "Spotify", status: "enabled", price: { amountMinor: 999, currencyCode: "USD" }, billingPeriod: "monthly", icon: { mode: "auto" }, createdOn: "2026-07-19", updatedOn: "2026-07-19" };
+function openModal(store: Partial<SubscriptionStore>, app = new App()) {
+  const modal = new EditSubscriptionModal(app as unknown as ObsidianApp, store as SubscriptionStore, new BuiltinCurrencyRegistry(), item);
+  modal.open(); return modal;
+}
+describe("EditSubscriptionModal", () => {
+  beforeEach(resetObsidianDom);
+  afterEach(() => vi.restoreAllMocks());
+  it("Clear retains the open draft and Save commits it through its public button", async () => {
     const updateSubscription = vi.fn().mockResolvedValue(undefined);
     const clearIcon = vi.fn().mockResolvedValue(undefined);
-    const modal = new EditSubscriptionModal({} as App, { updateSubscription, clearIcon } as unknown as SubscriptionStore,
-      {} as CurrencyRegistry, item);
-    modal.onOpen();
-    mockSettings.instances.find((setting) => setting.name === "Name")?.texts[0]?.emitChange("Draft Spotify");
-    mockSettings.instances.find((setting) => setting.name === "Icon cache")?.buttons[1]?.click();
-    await Promise.resolve();
-    expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
+    const modal = openModal({ updateSubscription, clearIcon });
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Draft Spotify");
+    findButton(modal.contentEl, "Clear icon").click();
+    await vi.waitFor(() => expect(Notice.messages).toContain("Icon cleared"));
+    expect(modal.contentEl.isConnected).toBe(true);
+    expect(findSetting(modal.contentEl, "Name").texts[0].inputEl.value).toBe("Draft Spotify");
     expect(updateSubscription).not.toHaveBeenCalled();
-    await (modal as unknown as { save(): Promise<void> }).save();
+    findButton(modal.contentEl, "Save").click();
+    await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
     expect(updateSubscription).toHaveBeenCalledWith("spotify", expect.objectContaining({ name: "Draft Spotify" }));
   });
-
-  it("reveals emoji without replacing the focused mode dropdown", () => {
-    const modal = new EditSubscriptionModal({} as App, {} as SubscriptionStore, {} as CurrencyRegistry, item);
-    modal.onOpen();
-    const mode = mockSettings.instances.find((setting) => setting.name === "Icon mode")!;
-    const count = mockSettings.instances.length;
-    mode.dropdowns[0].emitChange("emoji");
-    expect(mockSettings.instances).toHaveLength(count);
-    expect(mockSettings.instances.find((setting) => setting.name === "Icon mode")).toBe(mode);
+  it("reveals and hides Emoji while retaining the focused mode dropdown", () => {
+    const modal = openModal({});
+    const mode = findSetting(modal.contentEl, "Icon mode").dropdowns[0].selectEl;
+    const emoji = findSetting(modal.contentEl, "Emoji").settingEl;
+    expect(emoji.hidden).toBe(true);
+    mode.focus(); changeSelect(mode, "emoji");
+    expect(emoji.hidden).toBe(false);
+    expect(emoji.style.display).not.toBe("none");
+    expect(document.activeElement).toBe(mode);
+    changeSelect(mode, "none");
+    expect(emoji.hidden).toBe(true);
+    expect(emoji.style.display).toBe("none");
+    expect(document.activeElement).toBe(mode);
   });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("updates Open URL for unsaved input and opens its normalized URL in the modal window without saving", () => {
+  it("Open URL uses the modal owner window and unsaved input without saving", () => {
+    const frame = document.body.createEl("iframe");
+    const owner = frame.contentWindow!; installObsidianDomHelpers(owner);
     const updateSubscription = vi.fn();
-    const modal = new EditSubscriptionModal(
-      {} as App,
-      { updateSubscription } as unknown as SubscriptionStore,
-      {} as CurrencyRegistry,
-      item
-    );
-    const ownerWindowOpen = vi.fn();
-    const globalWindowOpen = vi.fn();
-    vi.stubGlobal("window", { open: globalWindowOpen });
-    (
-      modal as unknown as {
-        contentEl: { ownerDocument: { defaultView: { open: typeof ownerWindowOpen } } };
-      }
-    ).contentEl.ownerDocument = { defaultView: { open: ownerWindowOpen } };
-
-    modal.onOpen();
-
-    const serviceUrlSetting = mockSettings.instances.find(
-      (setting) => setting.name === "Service URL"
-    );
-    const input = serviceUrlSetting?.texts[0];
-    const openUrlButton = serviceUrlSetting?.buttons[0];
-
-    expect(openUrlButton?.buttonText).toBe("Open URL");
-    expect(openUrlButton?.disabled).toBe(true);
-
-    input?.emitChange("example.com");
-    expect(openUrlButton?.disabled).toBe(false);
-
-    input?.emitChange("mailto:hello@example.com");
-    expect(openUrlButton?.disabled).toBe(true);
-
-    input?.emitChange("example.com");
-    openUrlButton?.click();
-
-    expect(ownerWindowOpen).toHaveBeenCalledWith("https://example.com/", "_blank");
-    expect(globalWindowOpen).not.toHaveBeenCalled();
+    const ownerOpen = vi.spyOn(owner, "open").mockImplementation(() => null);
+    const globalOpen = vi.spyOn(window, "open").mockImplementation(() => null);
+    const modal = openModal({ updateSubscription }, new App(frame.contentDocument!));
+    const input = findSetting(modal.contentEl, "Service URL").texts[0].inputEl;
+    const button = findButton(modal.contentEl, "Open URL");
+    expect(button.disabled).toBe(true);
+    changeInput(input, "example.com"); expect(button.disabled).toBe(false);
+    changeInput(input, "mailto:hello@example.com"); expect(button.disabled).toBe(true);
+    changeInput(input, "example.com"); button.click();
+    expect(ownerOpen).toHaveBeenCalledWith("https://example.com/", "_blank");
+    expect(globalOpen).not.toHaveBeenCalled();
     expect(updateSubscription).not.toHaveBeenCalled();
-    expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
+    expect(modal.contentEl.isConnected).toBe(true);
   });
-
-  it("shows save failures from refresh and clear icon actions", async () => {
-    const modal = new EditSubscriptionModal(
-      {} as App,
-      {
-        updateSubscription: vi.fn().mockResolvedValue(undefined),
-        refreshIcon: vi.fn().mockRejectedValue(new Error("refresh failed")),
-        clearIcon: vi.fn().mockRejectedValue(new Error("clear failed")),
-      } as unknown as SubscriptionStore,
-      {} as CurrencyRegistry,
-      item
-    );
-
-    modal.onOpen();
-    const iconCacheSetting = mockSettings.instances.find(
-      (setting) => setting.name === "Icon cache"
-    );
-
-    iconCacheSetting?.buttons[0]?.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    iconCacheSetting?.buttons[1]?.click();
-    await Promise.resolve();
-
-    expect(notices.messages).toEqual(["refresh failed", "clear failed"]);
-    expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
+  it("reports Refresh and Clear failures and preserves the draft/modal", async () => {
+    const modal = openModal({ updateSubscription: vi.fn().mockResolvedValue(undefined), refreshIcon: vi.fn().mockRejectedValue(new Error("refresh failed")), clearIcon: vi.fn().mockRejectedValue(new Error("clear failed")) });
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Draft");
+    findButton(modal.contentEl, "Refresh icon").click();
+    await vi.waitFor(() => expect(Notice.messages).toContain("refresh failed"));
+    findButton(modal.contentEl, "Clear icon").click();
+    await vi.waitFor(() => expect(Notice.messages).toContain("clear failed"));
+    expect(modal.contentEl.isConnected).toBe(true);
+    expect(findSetting(modal.contentEl, "Name").texts[0].inputEl.value).toBe("Draft");
   });
 });

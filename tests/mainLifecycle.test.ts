@@ -16,7 +16,7 @@ describe("plugin startup", () => {
   it("continues registering the plugin when startup cleanup cannot be saved", async () => {
     notices.reset();
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.stubGlobal("window", { setTimeout: vi.fn(), clearTimeout: vi.fn() });
+    vi.stubGlobal("window", Object.assign(new EventTarget(), { setTimeout: vi.fn(), clearTimeout: vi.fn() }));
     const plugin = new SubscriptionCalculatorPlugin({} as never, {} as never) as unknown as {
       loadData(): Promise<unknown>;
       onload(): Promise<void>;
@@ -50,5 +50,28 @@ describe("plugin startup", () => {
       "Failed to clean up saved subscription data:",
       expect.any(Error)
     );
+  });
+
+  it("registers unload durability and removes handlers and listeners during cleanup", async () => {
+    const hostWindow = Object.assign(new EventTarget(), { setTimeout, clearTimeout });
+    vi.stubGlobal("window", hostWindow);
+    const plugin = new SubscriptionCalculatorPlugin({} as never, {} as never) as SubscriptionCalculatorPlugin & {
+      cliHandlers: Map<string, unknown>;
+      runRegisteredCleanups(): void;
+    };
+    await plugin.onload();
+    const flush = vi.spyOn(plugin.store, "flushDisableGracePeriods").mockResolvedValue(undefined);
+    const dispose = vi.spyOn(plugin.store, "dispose");
+    hostWindow.dispatchEvent(new Event("beforeunload"));
+    expect(flush).toHaveBeenCalledOnce();
+    plugin.onunload();
+    expect(flush).toHaveBeenCalledTimes(2);
+    plugin.runRegisteredCleanups();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(plugin.cliHandlers.size).toBe(0);
+    hostWindow.dispatchEvent(new Event("beforeunload"));
+    expect(flush).toHaveBeenCalledTimes(2);
+    plugin.runRegisteredCleanups();
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });

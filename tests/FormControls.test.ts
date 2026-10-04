@@ -1,139 +1,93 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
-import type { CurrencyRegistry } from "../src/money/CurrencyRegistry";
-import {
-  createCurrencySelect,
-  createCustomBillingPeriodDaysInput,
-  createMoneyInput,
-  createPeriodSelect,
-  createToggleSwitch,
-} from "../src/ui/components/FormControls";
+import { createDefaultData } from "../src/data/defaultData";
+import { DataBackedCurrencyRegistry } from "../src/money/CurrencyRegistry";
+import { resetObsidianDom } from "./helpers/obsidianDom";
+import { createCurrencySelect, createCustomBillingPeriodDaysInput, createMoneyInput, createPeriodSelect, createToggleSwitch } from "../src/ui/components/FormControls";
 
-class FakeElement {
-  readonly children: FakeElement[] = [];
-  readonly attributes = new Map<string, string>();
-  checked = false;
-  value = "";
-  text = "";
-  selected = false;
-  hidden = false;
-  readonly style = { setProperty: (_name: string, _value: string) => undefined };
-  readonly selectedOptions: FakeElement[] = [];
-
-  createDiv(): FakeElement {
-    const child = new FakeElement();
-    this.children.push(child);
-    return child;
-  }
-
-  createEl(_tagName?: string, options?: { attr?: Record<string, string> }): FakeElement {
-    const child = new FakeElement();
-    for (const [name, value] of Object.entries(options?.attr ?? {})) {
-      child.setAttribute(name, value);
-      if (name === "value") child.value = value;
-    }
-    this.children.push(child);
-    return child;
-  }
-
-  createSpan(options?: { text?: string }): FakeElement {
-    const child = new FakeElement();
-    child.text = options?.text ?? "";
-    this.children.push(child);
-    return child;
-  }
-
-  setAttribute(name: string, value: string): void {
-    this.attributes.set(name, value);
-  }
-
-  getAttribute(name: string): string | null {
-    return this.attributes.get(name) ?? null;
-  }
-
-  setText(text: string): void {
-    this.text = text;
-  }
-
-  empty(): void {
-    this.children.length = 0;
-  }
-
-  focus(): void {}
-
-  blur(): void {}
-
-  addEventListener(_event: string, _listener: () => void): void {}
+function setup() {
+  const data = createDefaultData();
+  const registry = new DataBackedCurrencyRegistry(() => data.settings.defaultCurrency, () => data.customCurrencies);
+  const container = document.body.createDiv();
+  return { container, registry };
 }
 
-describe("createToggleSwitch", () => {
-  it("labels the checkbox for assistive technology", () => {
-    const container = new FakeElement();
+describe("card form controls in a DOM", () => {
+  beforeEach(() => resetObsidianDom());
 
-    createToggleSwitch(
-      container as unknown as HTMLElement,
-      true,
-      () => undefined,
-      "Enable or disable Netflix"
-    );
-
-    expect(container.children[0]?.children[0]?.attributes.get("aria-label")).toBe(
-      "Enable or disable Netflix"
-    );
+  it("labels the checkbox and sends the changed checked state", () => {
+    const { container } = setup();
+    const onChange = vi.fn();
+    const label = createToggleSwitch(container, true, onChange, "Enable or disable Netflix");
+    const checkbox = label.querySelector<HTMLInputElement>("input")!;
+    expect(checkbox.getAttribute("aria-label")).toBe("Enable or disable Netflix");
+    expect(checkbox.checked).toBe(true);
+    checkbox.click();
+    expect(checkbox.checked).toBe(false);
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("labels card controls by their purpose instead of their selected value", () => {
-    const container = new FakeElement();
-    const registry = {
-      get: () => ({ code: "USD", label: "USD", scale: 2, source: "builtin" }),
-      listSelectable: () => [{ code: "USD", label: "USD", scale: 2, source: "builtin" }],
-    } as unknown as CurrencyRegistry;
-
-    const currency = createCurrencySelect(
-      container as unknown as HTMLElement,
-      registry,
-      "USD",
-      () => undefined,
-      "Currency for Netflix"
-    );
-    const period = createPeriodSelect(
-      container as unknown as HTMLElement,
-      "monthly",
-      () => undefined,
-      "Billing period for Netflix"
-    );
-    const days = createCustomBillingPeriodDaysInput(
-      container as unknown as HTMLElement,
-      30,
-      () => undefined,
-      "Custom billing period days for Netflix"
-    );
-
+  it("labels card controls by purpose and handles actual change events", () => {
+    const { container, registry } = setup();
+    const onCurrency = vi.fn();
+    const onPeriod = vi.fn();
+    const onDays = vi.fn();
+    const currency = createCurrencySelect(container, registry, "USD", onCurrency, "Currency for Netflix");
+    const period = createPeriodSelect(container, "monthly", onPeriod, "Billing period for Netflix");
+    const days = createCustomBillingPeriodDaysInput(container, 30, onDays, "Custom billing period days for Netflix");
     expect(currency.getAttribute("aria-label")).toBe("Currency for Netflix");
     expect(period.getAttribute("aria-label")).toBe("Billing period for Netflix");
-    expect(days.getAttribute("aria-label")).toBe(
-      "Custom billing period days for Netflix"
-    );
-    expect(days.getAttribute("max")).toBe(String(MAX_CUSTOM_BILLING_PERIOD_DAYS));
+    expect(days.getAttribute("aria-label")).toBe("Custom billing period days for Netflix");
+    expect(days.max).toBe(String(MAX_CUSTOM_BILLING_PERIOD_DAYS));
+    currency.value = "EUR";
+    currency.dispatchEvent(new Event("change", { bubbles: true }));
+    period.value = "custom";
+    period.dispatchEvent(new Event("change", { bubbles: true }));
+    days.value = "45";
+    days.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(onCurrency).toHaveBeenCalledExactlyOnceWith("EUR");
+    expect(onPeriod).toHaveBeenCalledExactlyOnceWith("custom");
+    expect(onDays).toHaveBeenCalledExactlyOnceWith(45);
+    expect(period.parentElement?.querySelector(".subscription-calculator-select-display")?.textContent).toBe("custom");
   });
 
-  it("labels the focused price input by its purpose", () => {
-    const container = new FakeElement();
-    const registry = {
-      get: () => ({ code: "USD", label: "USD", scale: 2, source: "builtin" }),
-    } as unknown as CurrencyRegistry;
-
-    const input = createMoneyInput(
-      container as unknown as HTMLElement,
-      { amountMinor: 1999, currencyCode: "USD" },
-      registry,
-      () => undefined,
-      "Price for Netflix"
-    );
-
+  it("opens a labeled price editor and commits once on Enter through native blur", () => {
+    const { container, registry } = setup();
+    const commit = vi.fn();
+    const input = createMoneyInput(container, { amountMinor: 1999, currencyCode: "USD" }, registry, commit, "Price for Netflix");
+    const display = container.querySelector<HTMLButtonElement>("button")!;
     expect(input.getAttribute("aria-label")).toBe("Price for Netflix");
-    expect(container.children[0]?.children[0]?.getAttribute("aria-label")).toBe(
-      "Edit price for Netflix: 19.99"
-    );
+    expect(display.getAttribute("aria-label")).toBe("Edit price for Netflix: 19.99");
+    expect(input.hidden).toBe(true);
+    display.click();
+    expect(document.activeElement).toBe(input);
+    expect(input.hidden).toBe(false);
+    expect(display.hidden).toBe(true);
+    expect(input.type).toBe("number");
+    expect(input.selectionStart).toBeNull();
+    input.value = "123.45";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    input.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(true);
+    expect(commit).toHaveBeenCalledExactlyOnceWith("123.45");
+    expect(document.activeElement).toBe(display);
+    expect(input.hidden).toBe(true);
+    expect(display.hidden).toBe(false);
+    expect(display.textContent).toBe("123.45");
+  });
+
+  it("commits a price when focus moves to another native control", () => {
+    const { container, registry } = setup();
+    const commit = vi.fn();
+    const input = createMoneyInput(container, { amountMinor: 1000, currencyCode: "USD" }, registry, commit);
+    container.querySelector<HTMLButtonElement>("button")!.click();
+    input.value = "12.50";
+    const next = container.createEl("button");
+    next.focus();
+    expect(document.activeElement).toBe(next);
+    expect(commit).toHaveBeenCalledExactlyOnceWith("12.50");
+    expect(input.hidden).toBe(true);
   });
 });

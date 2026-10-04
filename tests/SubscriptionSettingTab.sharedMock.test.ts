@@ -27,5 +27,7 @@ describe("SubscriptionSettingTab with the shared Obsidian mock", () => {
     await expect(tab.setControlValue("openMode", "main-tab")).resolves.toBeUndefined();
 
     expect(plugin.data.settings.openMode).toBe("main-tab");
+    expect(plugin.store.updateSettings).toHaveBeenCalledOnce();
+    expect((tab as unknown as { updateCalls: number }).updateCalls).toBe(1);
   });
 });

@@ -1,80 +1,79 @@
-import { App, Setting } from "obsidian";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { App as ObsidianApp } from "obsidian";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
-import type { CurrencyRegistry } from "../src/money/CurrencyRegistry";
+import { BuiltinCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { AddSubscriptionModal } from "../src/ui/AddSubscriptionModal";
-
-type MockSetting = {
-  name: string;
-  texts: Array<{ emitChange(value: string): void; value: string }>;
-  dropdowns: Array<{ emitChange(value: string): void }>;
-};
-
-const mockSettings = Setting as unknown as {
-  instances: MockSetting[];
-  reset(): void;
-};
-
-function latestSetting(name: string): MockSetting {
-  const setting = [...mockSettings.instances].reverse().find((item) => item.name === name);
-  if (!setting) throw new Error(`Missing setting: ${name}`);
-  return setting;
+import { App, Notice, changeInput, changeSelect, findButton, findSetting, resetObsidianDom } from "./helpers/obsidianDom";
+import { deferred } from "./helpers/deferred";
+vi.mock("obsidian", () => import("./helpers/obsidianDom"));
+function openModal(addSubscription = vi.fn(async () => undefined)) {
+  const modal = new AddSubscriptionModal(new App() as unknown as ObsidianApp,
+    { addSubscription } as unknown as SubscriptionStore, new BuiltinCurrencyRegistry(), "USD");
+  modal.open();
+  return { modal, addSubscription };
 }
-
 describe("AddSubscriptionModal", () => {
-  beforeEach(() => {
-    mockSettings.reset();
-  });
-
-  it("submits once while pending and permits retry after failure", async () => {
-    let rejectSave!: (error: Error) => void;
-    const addSubscription = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; }));
-    const modal = new AddSubscriptionModal({} as App, { addSubscription } as unknown as SubscriptionStore,
-      {} as CurrencyRegistry, "USD") as unknown as { submit(): Promise<void>; isClosed: boolean };
-    const first = modal.submit();
-    void modal.submit();
+  beforeEach(resetObsidianDom);
+  afterEach(() => vi.restoreAllMocks());
+  it("submits through Add once while pending, disables it, and permits retry after failure", async () => {
+    const save = deferred<void>();
+    const { modal, addSubscription } = openModal(vi.fn(() => save.promise));
+    const add = findButton(modal.contentEl, "Add");
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Netflix");
+    changeInput(findSetting(modal.contentEl, "Price").texts[0].inputEl, "19.99");
+    add.click(); add.click();
     expect(addSubscription).toHaveBeenCalledOnce();
-    rejectSave(new Error("disk full"));
-    await first;
-    expect(modal.isClosed).toBe(false);
+    expect(add.disabled).toBe(true);
+    expect(addSubscription).toHaveBeenCalledWith(expect.objectContaining({ name: "Netflix", priceText: "19.99" }));
+    save.reject(new Error("disk full"));
+    await vi.waitFor(() => expect(Notice.messages).toContain("disk full"));
+    expect(modal.contentEl.isConnected).toBe(true);
+    expect(add.disabled).toBe(false);
     addSubscription.mockImplementation(async () => undefined);
-    await modal.submit();
+    add.click();
+    await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
     expect(addSubscription).toHaveBeenCalledTimes(2);
-    expect(modal.isClosed).toBe(true);
   });
-
-  it("reveals custom days without recreating existing settings", () => {
-    const modal = new AddSubscriptionModal({} as App, {} as SubscriptionStore, {
-      getDefault: () => ({ code: "USD" }),
-      listSelectable: () => [{ code: "USD", label: "USD", scale: 2, source: "builtin" }],
-    } as CurrencyRegistry, "USD");
-    modal.onOpen();
-    const name = latestSetting("Name");
-    const count = mockSettings.instances.length;
-    latestSetting("Billing period").dropdowns[0]?.emitChange("custom");
-    expect(mockSettings.instances).toHaveLength(count);
-    expect(latestSetting("Name")).toBe(name);
+  it("reveals and hides Custom days without replacing or unfocusing the period dropdown", () => {
+    const { modal } = openModal();
+    const period = findSetting(modal.contentEl, "Billing period").dropdowns[0].selectEl;
+    const daysRow = findSetting(modal.contentEl, "Custom period days").settingEl;
+    const name = findSetting(modal.contentEl, "Name").texts[0].inputEl;
+    expect(daysRow.hidden).toBe(true);
+    expect(daysRow.style.display).toBe("none");
+    period.focus(); changeSelect(period, "custom");
+    expect(daysRow.hidden).toBe(false);
+    expect(daysRow.style.display).not.toBe("none");
+    expect(document.activeElement).toBe(period);
+    expect(findSetting(modal.contentEl, "Name").texts[0].inputEl).toBe(name);
+    changeSelect(period, "monthly");
+    expect(daysRow.hidden).toBe(true);
+    expect(daysRow.style.display).toBe("none");
+    expect(document.activeElement).toBe(period);
   });
-
-  it("keeps entered fields visible when changing the billing period", () => {
-    const modal = new AddSubscriptionModal(
-      {} as App,
-      {} as SubscriptionStore,
-      {
-        getDefault: () => ({ code: "USD" }),
-        listSelectable: () => [{ code: "USD", label: "USD", scale: 2, source: "builtin" }],
-      } as CurrencyRegistry,
-      "USD"
-    );
-
-    modal.onOpen();
-    latestSetting("Name").texts[0]?.emitChange("Netflix");
-    latestSetting("Price").texts[0]?.emitChange("19.99");
-    latestSetting("Service URL").texts[0]?.emitChange("netflix.com");
-    latestSetting("Billing period").dropdowns[0]?.emitChange("custom");
-
-    expect(latestSetting("Name").texts[0]?.value).toBe("Netflix");
-    expect(latestSetting("Price").texts[0]?.value).toBe("19.99");
-    expect(latestSetting("Service URL").texts[0]?.value).toBe("netflix.com");
+  it("guards a re-entered Add callback independently of the disabled button", async () => {
+    const save = deferred<void>();
+    const { modal, addSubscription } = openModal(vi.fn(() => save.promise));
+    const add = findButton(modal.contentEl, "Add");
+    try {
+      add.click();
+      // dispatchEvent invokes the listener even when native button.click() is disabled.
+      // This isolates the synchronous guard without reaching into private modal state.
+      add.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(addSubscription).toHaveBeenCalledOnce();
+    } finally {
+      save.resolve();
+      await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
+    }
+  });
+  it("keeps entered fields when the billing period changes", () => {
+    const { modal } = openModal();
+    const name = findSetting(modal.contentEl, "Name").texts[0].inputEl;
+    const price = findSetting(modal.contentEl, "Price").texts[0].inputEl;
+    const url = findSetting(modal.contentEl, "Service URL").texts[0].inputEl;
+    changeInput(name, "Netflix"); changeInput(price, "19.99"); changeInput(url, "netflix.com");
+    changeSelect(findSetting(modal.contentEl, "Billing period").dropdowns[0].selectEl, "custom");
+    expect(["Name", "Price", "Service URL"].map(label => findSetting(modal.contentEl, label).texts[0].inputEl.value)).toEqual(["Netflix", "19.99", "netflix.com"]);
   });
 });
