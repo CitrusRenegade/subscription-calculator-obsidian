@@ -1,39 +1,46 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { requestUrl } from "obsidian";
-import { createDefaultData } from "../src/data/defaultData";
-import { SubscriptionStore } from "../src/data/SubscriptionStore";
-import { IconService } from "../src/icons/IconService";
-import { DataBackedCurrencyRegistry } from "../src/money/CurrencyRegistry";
+import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { migratePluginData } from "../src/data/migrations";
 import { createBackup } from "../src/data/backup";
+import { disposeStores, ownStoreJob, storeFixture } from "./helpers/storeFixture";
+import { deferred } from "./helpers/deferred";
 
 vi.mock("obsidian", async () => ({ ...(await import("./obsidianMock")), requestUrl: vi.fn() }));
 const response = { status: 200, json: null, text: "", headers: { "content-type": "image/png" }, arrayBuffer: new Uint8Array([1, 2, 3]).buffer };
+const stores: SubscriptionStore[] = [];
+const pendingReleases: Array<() => void> = [];
+const jobs: Promise<unknown>[] = [];
 function deferredResponse(setRelease: (release: (value: typeof response) => void) => void): ReturnType<typeof requestUrl> {
-  const pending = new Promise<typeof response>(resolve => setRelease(resolve));
+  const gate = deferred<typeof response>();
+  setRelease(value => gate.resolve(value));
+  pendingReleases.push(() => gate.resolve(response));
+  const pending = gate.promise;
   return Object.assign(pending, { arrayBuffer: pending.then(value => value.arrayBuffer), json: pending.then(value => value.json), text: pending.then(value => value.text) });
 }
 function setup(save = vi.fn(async () => undefined)) {
-  const data = createDefaultData();
-  const icons = new IconService(data, () => data.settings.faviconProvider);
-  const registry = new DataBackedCurrencyRegistry(() => data.settings.defaultCurrency, () => data.customCurrencies);
-  const store = new SubscriptionStore(data, registry, icons, save);
+  const { data, icons, store } = storeFixture(undefined, save);
+  stores.push(store);
   const add = (name = "Service", url = "https://example.com") => store.addSubscription({ name, serviceUrl: url, priceText: "12", currencyCode: "USD", billingPeriod: "monthly" });
   return { data, icons, store, add, save };
 }
 describe("icon reliability", () => {
-  afterEach(() => { vi.restoreAllMocks(); vi.mocked(requestUrl).mockReset(); });
+  afterEach(async () => {
+    try { await disposeStores(stores, pendingReleases, jobs); }
+    finally { vi.restoreAllMocks(); vi.mocked(requestUrl).mockReset(); }
+  });
   it("saves financial edits and reads backups while an add icon request is unresolved", async () => {
     let release!: (value: typeof response) => void;
-    vi.mocked(requestUrl).mockImplementation(() => deferredResponse(resolve => { release = resolve; }));
+    const started = deferred<void>();
+    vi.mocked(requestUrl).mockImplementation(() => deferredResponse(resolve => { release = resolve; started.resolve(); }));
     const { store, add, data, save } = setup();
-    const adding = add();
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const adding = ownStoreJob(jobs, add());
+    await started.promise;
     try {
       expect(save).toHaveBeenCalledOnce();
-      const editing = store.updateSubscription(data.subscriptions[0].id, { name: "Updated" });
-      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      const editing = ownStoreJob(jobs, store.updateSubscription(data.subscriptions[0].id, { name: "Updated" }));
       await editing;
+      expect(save).toHaveBeenCalledTimes(2);
       expect(createBackup((await store.readSnapshot()).data).payload.subscriptions[0].name).toBe("Updated");
     } finally { release(response); await adding; }
   });
@@ -55,10 +62,11 @@ describe("icon reliability", () => {
   });
   it("coalesces concurrent same-domain adds and releases failed requests for retry", async () => {
     let release!: (value: typeof response) => void;
-    vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; }));
+    const started = deferred<void>();
+    vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; started.resolve(); }));
     const { add, data, store } = setup();
-    const first = add("One"); const second = add("Two");
-    await vi.waitFor(() => expect(data.subscriptions).toHaveLength(2));
+    const first = ownStoreJob(jobs, add("One")); const second = ownStoreJob(jobs, add("Two"));
+    await started.promise;
     await store.readSnapshot();
     expect(requestUrl).toHaveBeenCalledOnce();
     release(response); await Promise.all([first, second]);
@@ -75,9 +83,10 @@ describe("icon reliability", () => {
     const { add, store, data } = setup();
     await add("One"); await add("Two", "https://two.example.com");
     let release!: (value: typeof response) => void;
-    vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; }));
-    const refreshing = store.refreshAllIcons();
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const started = deferred<void>();
+    vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; started.resolve(); }));
+    const refreshing = ownStoreJob(jobs, store.refreshAllIcons());
+    await started.promise;
     await store.clearIcon(data.subscriptions[1].id);
     release(response);
     expect(await refreshing).toEqual({ refreshed: 1, failed: 0, skipped: 1 });
@@ -89,13 +98,14 @@ describe("icon reliability", () => {
     const { add, store, data } = setup();
     await add("One"); await add("Two", "https://two.example.com"); await add("Three");
     let release!: (value: typeof response) => void;
+    const started = deferred<void>();
     const older = { ...response, arrayBuffer: new Uint8Array([2]).buffer };
     const newer = { ...response, arrayBuffer: new Uint8Array([9]).buffer };
     vi.mocked(requestUrl).mockResolvedValueOnce(older)
-      .mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; }))
+      .mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; started.resolve(); }))
       .mockResolvedValueOnce(newer);
-    const refreshing = store.refreshAllIcons();
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const refreshing = ownStoreJob(jobs, store.refreshAllIcons());
+    await started.promise;
     expect(await store.refreshIcon(data.subscriptions[0].id)).toBe(true);
     expect(data.iconCache["google-s2:example.com"].dataUrl).toBe("data:image/png;base64,CQ==");
     release(response);
@@ -120,14 +130,16 @@ describe("icon reliability", () => {
     const { add, store, data } = setup();
     await add("One"); await add("Two", "https://two.example.com"); await add("Three");
     let releaseBatch!: (value: typeof response) => void;
+    const batchStarted = deferred<void>();
     let releaseNewer!: (value: typeof response) => void;
+    const newerStarted = deferred<void>();
     vi.mocked(requestUrl).mockResolvedValueOnce({ ...response, arrayBuffer: new Uint8Array([2]).buffer })
-      .mockImplementationOnce(() => deferredResponse(resolve => { releaseBatch = resolve; }))
-      .mockImplementationOnce(() => deferredResponse(resolve => { releaseNewer = resolve; }));
-    const batch = store.refreshAllIcons();
-    await vi.waitFor(() => expect(releaseBatch).toBeTypeOf("function"));
-    const newer = store.refreshIcon(data.subscriptions[0].id);
-    await vi.waitFor(() => expect(releaseNewer).toBeTypeOf("function"));
+      .mockImplementationOnce(() => deferredResponse(resolve => { releaseBatch = resolve; batchStarted.resolve(); }))
+      .mockImplementationOnce(() => deferredResponse(resolve => { releaseNewer = resolve; newerStarted.resolve(); }));
+    const batch = ownStoreJob(jobs, store.refreshAllIcons());
+    await batchStarted.promise;
+    const newer = ownStoreJob(jobs, store.refreshIcon(data.subscriptions[0].id));
+    await newerStarted.promise;
     releaseBatch(response);
     expect(await batch).toEqual({ refreshed: 3, failed: 0, skipped: 0 });
     releaseNewer({ ...response, arrayBuffer: new Uint8Array([9]).buffer });
@@ -153,9 +165,10 @@ describe("icon reliability", () => {
     const id = data.subscriptions[0].id;
     const backup = JSON.stringify(createBackup(data));
     let release!: (value: typeof response) => void;
-    vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; }));
-    const refreshing = store.refreshIcon(id);
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const started = deferred<void>();
+    vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; started.resolve(); }));
+    const refreshing = ownStoreJob(jobs, store.refreshIcon(id));
+    await started.promise;
     if (change === "url") await store.updateSubscription(id, { serviceUrl: "https://new.example.com" });
     if (change === "clear") await store.clearIcon(id);
     if (change === "delete") await store.deleteSubscription(id);

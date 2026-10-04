@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { createDefaultData } from "../src/data/defaultData";
-import type { IconService } from "../src/icons/IconService";
-import { DataBackedCurrencyRegistry } from "../src/money/CurrencyRegistry";
+import { disposeStores, storeFixture } from "./helpers/storeFixture";
 import type { CurrencyMeta, PluginData, SubscriptionItem } from "../src/types";
 
 const customCurrency: CurrencyMeta = {
@@ -12,6 +11,8 @@ const customCurrency: CurrencyMeta = {
   scale: 2,
   source: "custom",
 };
+
+const stores: SubscriptionStore[] = [];
 
 function createSubscription(currencyCode: string): SubscriptionItem {
   return {
@@ -31,21 +32,13 @@ function createStore(
   data: PluginData,
   saveData: () => Promise<void> = async () => undefined
 ): SubscriptionStore {
-  const registry = new DataBackedCurrencyRegistry(
-    () => data.settings.defaultCurrency,
-    () => data.customCurrencies
-  );
-  const iconService = {
-    ensureAutoIcon: async () => undefined,
-    refreshAutoIcon: async () => false,
-    clearIcon: () => undefined,
-    getCachedIcon: () => null,
-  } as unknown as IconService;
-
-  return new SubscriptionStore(data, registry, iconService, saveData);
+  const { store } = storeFixture(data, saveData);
+  stores.push(store);
+  return store;
 }
 
 describe("custom currency store rules", () => {
+  afterEach(() => disposeStores(stores));
   it("adds custom currencies with stable internal codes", async () => {
     const data = createDefaultData();
     const store = createStore(data);

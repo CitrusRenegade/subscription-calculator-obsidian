@@ -4,33 +4,28 @@ import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
 import { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { createDefaultData } from "../src/data/defaultData";
 import type { Clock } from "../src/date/Clock";
-import type { IconService } from "../src/icons/IconService";
-import { DataBackedCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import type { PluginData } from "../src/types";
+import { disposeStores, ownStoreJob, storeFixture } from "./helpers/storeFixture";
+import { deferred } from "./helpers/deferred";
+
+const stores: SubscriptionStore[] = [];
+const pendingReleases: Array<() => void> = [];
+const jobs: Promise<unknown>[] = [];
 
 function createStore(
   data: PluginData,
   saveData: () => Promise<void> = async () => undefined,
   clock: Clock = { now: () => new Date("2026-06-27T12:00:00Z") }
 ): SubscriptionStore {
-  const registry = new DataBackedCurrencyRegistry(
-    () => data.settings.defaultCurrency,
-    () => data.customCurrencies
-  );
-  const iconService = {
-    ensureAutoIcon: async () => undefined,
-    refreshAutoIcon: async () => false,
-    clearIcon: () => undefined,
-    getCachedIcon: () => null,
-  } as unknown as IconService;
-
-  return new SubscriptionStore(data, registry, iconService, saveData, clock);
+  const { store } = storeFixture(data, saveData, clock);
+  stores.push(store);
+  return store;
 }
 
 describe("subscription store", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+  afterEach(async () => {
+    try { await disposeStores(stores, pendingReleases, jobs); }
+    finally { vi.unstubAllGlobals(); vi.restoreAllMocks(); }
   });
 
   it("can create disabled subscriptions that are excluded from totals", async () => {
@@ -109,17 +104,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let rejectFirstUpdate: ((reason?: unknown) => void) | undefined;
-    let signalFirstUpdateSave: (() => void) | undefined;
-    const firstUpdateSaveStarted = new Promise<void>((resolve) => {
-      signalFirstUpdateSave = resolve;
-    });
+    const firstUpdateSaveStarted = deferred<void>();
+    pendingReleases.push(() => firstUpdateSaveStarted.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      await new Promise<void>((_resolve, reject) => {
-        rejectFirstUpdate = reject;
-        signalFirstUpdateSave?.();
-      });
+      const saveGate = deferred<void>();
+      pendingReleases.push(() => saveGate.resolve());
+      rejectFirstUpdate = (reason) => saveGate.reject(reason);
+      firstUpdateSaveStarted.resolve();
+      await saveGate.promise;
     });
     await store.addSubscription({
       name: "Reliable service",
@@ -129,9 +123,9 @@ describe("subscription store", () => {
     });
     const id = data.subscriptions[0]?.id ?? "";
 
-    const firstUpdate = store.updateSubscription(id, { priceText: "30" });
-    const secondUpdate = store.updateSubscription(id, { name: "Renamed service" });
-    await firstUpdateSaveStarted;
+    const firstUpdate = ownStoreJob(jobs, store.updateSubscription(id, { priceText: "30" }));
+    const secondUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Renamed service" }));
+    await firstUpdateSaveStarted.promise;
     rejectFirstUpdate?.(new Error("disk full"));
 
     await expect(firstUpdate).rejects.toThrow("disk full");
@@ -147,17 +141,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let rejectUpdateSave: ((reason?: unknown) => void) | undefined;
-    let signalUpdateSave: (() => void) | undefined;
-    const updateSaveStarted = new Promise<void>((resolve) => {
-      signalUpdateSave = resolve;
-    });
+    const updateSaveStarted = deferred<void>();
+    pendingReleases.push(() => updateSaveStarted.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      await new Promise<void>((_resolve, reject) => {
-        rejectUpdateSave = reject;
-        signalUpdateSave?.();
-      });
+      const saveGate = deferred<void>();
+      pendingReleases.push(() => saveGate.resolve());
+      rejectUpdateSave = (reason) => saveGate.reject(reason);
+      updateSaveStarted.resolve();
+      await saveGate.promise;
     });
     await store.addSubscription({
       name: "Current service",
@@ -165,17 +158,17 @@ describe("subscription store", () => {
       currencyCode: "USD",
       billingPeriod: "monthly",
     });
-    const updated = store.updateSubscription(data.subscriptions[0]?.id ?? "", {
+    const updated = ownStoreJob(jobs, store.updateSubscription(data.subscriptions[0]?.id ?? "", {
       priceText: "30",
-    });
-    await updateSaveStarted;
+    }));
+    await updateSaveStarted.promise;
 
     const replacement = createDefaultData();
     replacement.settings.defaultCurrency = "EUR";
-    const restored = store.restoreBackupJson(
+    const restored = ownStoreJob(jobs, store.restoreBackupJson(
       JSON.stringify(createBackup(replacement)),
       () => true
-    );
+    ));
     rejectUpdateSave?.(new Error("disk full"));
 
     await expect(updated).rejects.toThrow("disk full");
@@ -333,17 +326,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let releaseBusySave: (() => void) | undefined;
-    let signalBusySave: (() => void) | undefined;
-    const busySaveStarted = new Promise<void>((resolve) => {
-      signalBusySave = resolve;
-    });
-    const busySaveFinished = new Promise<void>((resolve) => {
-      releaseBusySave = resolve;
-    });
+    const busySaveStarted = deferred<void>();
+    pendingReleases.push(() => busySaveStarted.resolve());
+    const busySaveFinishedGate = deferred<void>();
+    const busySaveFinished = busySaveFinishedGate.promise;
+    releaseBusySave = () => busySaveFinishedGate.resolve();
+    pendingReleases.push(() => busySaveFinishedGate.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      signalBusySave?.();
+      busySaveStarted.resolve();
       await busySaveFinished;
     });
     await store.addSubscription({
@@ -353,11 +345,11 @@ describe("subscription store", () => {
       billingPeriod: "monthly",
     });
     const id = data.subscriptions[0].id;
-    const busyUpdate = store.updateSubscription(id, { name: "Still queued" });
-    await busySaveStarted;
+    const busyUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Still queued" }));
+    await busySaveStarted.promise;
 
     await store.setSubscriptionEnabled(id, false);
-    const enabling = store.setSubscriptionEnabled(id, true);
+    const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
     timerCallbacks[0]?.();
     releaseBusySave?.();
 
@@ -376,17 +368,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let rejectFlushSave: ((reason?: unknown) => void) | undefined;
-    let signalFlushSave: (() => void) | undefined;
-    const flushSaveStarted = new Promise<void>((resolve) => {
-      signalFlushSave = resolve;
-    });
+    const flushSaveStarted = deferred<void>();
+    pendingReleases.push(() => flushSaveStarted.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount === 2) {
-        await new Promise<void>((_resolve, reject) => {
-          rejectFlushSave = reject;
-          signalFlushSave?.();
-        });
+        const saveGate = deferred<void>();
+        pendingReleases.push(() => saveGate.resolve());
+        rejectFlushSave = (reason) => saveGate.reject(reason);
+        flushSaveStarted.resolve();
+        await saveGate.promise;
       }
       if (saveCount === 3) throw new Error("enable save failed");
     });
@@ -399,9 +390,9 @@ describe("subscription store", () => {
     const id = data.subscriptions[0].id;
     await store.setSubscriptionEnabled(id, false);
 
-    const flushing = store.flushDisableGracePeriods();
-    await flushSaveStarted;
-    const enabling = store.setSubscriptionEnabled(id, true);
+    const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
+    await flushSaveStarted.promise;
+    const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
     rejectFlushSave?.(new Error("flush save failed"));
 
     await expect(flushing).rejects.toThrow("flush save failed");
@@ -418,17 +409,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let releaseBusySave: (() => void) | undefined;
-    let signalBusySave: (() => void) | undefined;
-    const busySaveStarted = new Promise<void>((resolve) => {
-      signalBusySave = resolve;
-    });
-    const busySaveFinished = new Promise<void>((resolve) => {
-      releaseBusySave = resolve;
-    });
+    const busySaveStarted = deferred<void>();
+    pendingReleases.push(() => busySaveStarted.resolve());
+    const busySaveFinishedGate = deferred<void>();
+    const busySaveFinished = busySaveFinishedGate.promise;
+    releaseBusySave = () => busySaveFinishedGate.resolve();
+    pendingReleases.push(() => busySaveFinishedGate.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      signalBusySave?.();
+      busySaveStarted.resolve();
       await busySaveFinished;
     });
     await store.addSubscription({
@@ -439,10 +429,10 @@ describe("subscription store", () => {
       status: "disabled",
     });
     const id = data.subscriptions[0].id;
-    const busyUpdate = store.updateSubscription(id, { name: "Still queued" });
-    await busySaveStarted;
+    const busyUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Still queued" }));
+    await busySaveStarted.promise;
 
-    const enabling = store.setSubscriptionEnabled(id, true);
+    const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
     await store.setSubscriptionEnabled(id, false);
     releaseBusySave?.();
 
@@ -461,17 +451,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let rejectFlushSave: ((reason?: unknown) => void) | undefined;
-    let signalFlushSave: (() => void) | undefined;
-    const flushSaveStarted = new Promise<void>((resolve) => {
-      signalFlushSave = resolve;
-    });
+    const flushSaveStarted = deferred<void>();
+    pendingReleases.push(() => flushSaveStarted.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      await new Promise<void>((_resolve, reject) => {
-        rejectFlushSave = reject;
-        signalFlushSave?.();
-      });
+      const saveGate = deferred<void>();
+      pendingReleases.push(() => saveGate.resolve());
+      rejectFlushSave = (reason) => saveGate.reject(reason);
+      flushSaveStarted.resolve();
+      await saveGate.promise;
     });
     await store.addSubscription({
       name: "Dispose without retry",
@@ -482,10 +471,9 @@ describe("subscription store", () => {
     await store.setSubscriptionEnabled(data.subscriptions[0].id, false);
 
     store.dispose();
-    await flushSaveStarted;
+    await flushSaveStarted.promise;
     rejectFlushSave?.(new Error("disk full"));
-    await Promise.resolve();
-    await Promise.resolve();
+    await store.readSnapshot();
 
     expect(setTimeout).toHaveBeenCalledTimes(1);
   });
@@ -498,17 +486,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let rejectDeleteSave: ((reason?: unknown) => void) | undefined;
-    let signalDeleteSave: (() => void) | undefined;
-    const deleteSaveStarted = new Promise<void>((resolve) => {
-      signalDeleteSave = resolve;
-    });
+    const deleteSaveStarted = deferred<void>();
+    pendingReleases.push(() => deleteSaveStarted.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      await new Promise<void>((_resolve, reject) => {
-        rejectDeleteSave = reject;
-        signalDeleteSave?.();
-      });
+      const saveGate = deferred<void>();
+      pendingReleases.push(() => saveGate.resolve());
+      rejectDeleteSave = (reason) => saveGate.reject(reason);
+      deleteSaveStarted.resolve();
+      await saveGate.promise;
     });
     await store.addSubscription({
       name: "Disposed delete",
@@ -519,8 +506,8 @@ describe("subscription store", () => {
     const id = data.subscriptions[0].id;
     await store.setSubscriptionEnabled(id, false);
 
-    const deleting = store.deleteSubscription(id);
-    await deleteSaveStarted;
+    const deleting = ownStoreJob(jobs, store.deleteSubscription(id));
+    await deleteSaveStarted.promise;
     store.dispose();
     rejectDeleteSave?.(new Error("disk full"));
 
@@ -540,17 +527,16 @@ describe("subscription store", () => {
     const data = createDefaultData();
     let saveCount = 0;
     let releaseBusySave: (() => void) | undefined;
-    let signalBusySave: (() => void) | undefined;
-    const busySaveStarted = new Promise<void>((resolve) => {
-      signalBusySave = resolve;
-    });
-    const busySaveFinished = new Promise<void>((resolve) => {
-      releaseBusySave = resolve;
-    });
+    const busySaveStarted = deferred<void>();
+    pendingReleases.push(() => busySaveStarted.resolve());
+    const busySaveFinishedGate = deferred<void>();
+    const busySaveFinished = busySaveFinishedGate.promise;
+    releaseBusySave = () => busySaveFinishedGate.resolve();
+    pendingReleases.push(() => busySaveFinishedGate.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      signalBusySave?.();
+      busySaveStarted.resolve();
       await busySaveFinished;
     });
     await store.addSubscription({
@@ -560,16 +546,15 @@ describe("subscription store", () => {
       billingPeriod: "monthly",
     });
     const id = data.subscriptions[0].id;
-    const busyUpdate = store.updateSubscription(id, { name: "Still queued" });
-    await busySaveStarted;
+    const busyUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Still queued" }));
+    await busySaveStarted.promise;
     await store.setSubscriptionEnabled(id, false);
     timerCallbacks[0]?.();
     store.dispose();
     releaseBusySave?.();
 
     await busyUpdate;
-    await Promise.resolve();
-    await Promise.resolve();
+    await store.readSnapshot();
 
     expect(data.subscriptions[0]?.status).toBe("disabled");
     expect(saveCount).toBe(3);
@@ -590,7 +575,7 @@ describe("subscription store", () => {
     });
 
     await store.setSubscriptionEnabled(data.subscriptions[0].id, false);
-    const flushing = store.flushDisableGracePeriods();
+    const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
     store.dispose();
     await flushing;
 
@@ -603,14 +588,17 @@ describe("subscription store", () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout });
 
     const data = createDefaultData();
+    const flushSaveStarted = deferred<void>();
     let rejectFlushSave: ((reason?: unknown) => void) | undefined;
     let saveCount = 0;
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount !== 2) return;
-      await new Promise<void>((_resolve, reject) => {
-        rejectFlushSave = reject;
-      });
+      const saveGate = deferred<void>();
+      pendingReleases.push(() => saveGate.resolve());
+      rejectFlushSave = (reason) => saveGate.reject(reason);
+      flushSaveStarted.resolve();
+      await saveGate.promise;
     });
     await store.addSubscription({
       name: "Concurrent enable",
@@ -621,9 +609,9 @@ describe("subscription store", () => {
     const id = data.subscriptions[0].id;
     await store.setSubscriptionEnabled(id, false);
 
-    const flushing = store.flushDisableGracePeriods();
-    await Promise.resolve();
-    const enabling = store.setSubscriptionEnabled(id, true);
+    const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
+    await flushSaveStarted.promise;
+    const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
     rejectFlushSave?.(new Error("disk full"));
 
     await expect(flushing).rejects.toThrow("disk full");
@@ -640,14 +628,14 @@ describe("subscription store", () => {
 
     const data = createDefaultData();
     let saveCount = 0;
-    let finishFlushSave: (() => void) | undefined;
-    const flushSaveFinished = new Promise<void>((resolve) => {
-      finishFlushSave = resolve;
-    });
+    const flushSaveStarted = deferred<void>();
+    const flushSaveFinished = deferred<void>();
+    pendingReleases.push(() => flushSaveFinished.resolve());
     const store = createStore(data, async () => {
       saveCount += 1;
       if (saveCount === 2) {
-        await flushSaveFinished;
+        flushSaveStarted.resolve();
+        await flushSaveFinished.promise;
         return;
       }
       if (saveCount === 3) throw new Error("enable save failed");
@@ -661,10 +649,10 @@ describe("subscription store", () => {
     const id = data.subscriptions[0].id;
     await store.setSubscriptionEnabled(id, false);
 
-    const flushing = store.flushDisableGracePeriods();
-    await Promise.resolve();
-    const enabling = store.setSubscriptionEnabled(id, true);
-    finishFlushSave?.();
+    const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
+    await flushSaveStarted.promise;
+    const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
+    flushSaveFinished.resolve();
 
     await flushing;
     await expect(enabling).rejects.toThrow("enable save failed");
