@@ -185,12 +185,12 @@ export class SubscriptionSettingTab extends PluginSettingTab {
             desc: "Downloads settings, subscriptions, and custom currencies. Favicons are excluded.",
             render: (setting) => {
               setting.addButton((button) =>
-                button.setButtonText("Export JSON").onClick(() => {
+                button.setButtonText("Export JSON").onClick(async () => {
                   try {
                     downloadJson(
                       this.containerEl.ownerDocument,
                       backupFilename(),
-                      this.plugin.exportBackupJson()
+                      await this.plugin.exportBackupJson()
                     );
                     new Notice("Backup downloaded");
                   } catch (error) {

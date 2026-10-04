@@ -38,6 +38,27 @@ Choose from weekly, monthly, quarterly, yearly, or custom billing periods.
 
 Your totals and next payment dates update automatically. Use the switch on a subscription card to include or exclude it from your active spending. Open the edit menu whenever you want to change its details or use an emoji instead of the website icon.
 
+## Command line
+
+With Obsidian running and its CLI enabled:
+
+```sh
+obsidian subscription-calculator:list
+obsidian subscription-calculator:list status=enabled currency=USD # list with filters
+obsidian subscription-calculator name="Netflix"
+obsidian subscription-calculator:export > backup.json
+
+# Windows: use Obsidian.com as cli (Obsidian limitation)
+Obsidian.com subscription-calculator name="Netflix"
+
+# Windows PowerShell 5.1: export as UTF-8
+Obsidian.com subscription-calculator:export | Out-File backup.json -Encoding utf8
+```
+
+`list` lists names and full IDs; `name=` shows a subscription's details. Use `id=` when names repeat. Only `export` outputs JSON, ready for **Restore backup**. Add `vault="My Vault"` before the command to select a vault.
+
+Redirection overwrites the file. Check the exported JSON: Obsidian errors can still return exit code zero.
+
 ## Supported currencies
 
 Subscription Calculator includes USD, EUR, GBP, CHF, RUB, and JPY. Totals are shown separately for each currency instead of relying on changing exchange rates.

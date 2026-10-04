@@ -1,10 +1,8 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { VIEW_TYPE_SUBSCRIPTIONS } from "./constants";
 import { SubscriptionStore } from "./data/SubscriptionStore";
-import {
-  createBackup,
-  type BackupImportReport,
-} from "./data/backup";
+import type { BackupImportReport } from "./data/backup";
+import { exportBackup, registerSubscriptionCli } from "./cli/subscriptions";
 import { migratePluginData } from "./data/migrations";
 import { IconService } from "./icons/IconService";
 import { DataBackedCurrencyRegistry } from "./money/CurrencyRegistry";
@@ -55,6 +53,7 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
     );
 
     this.addSettingTab(new SubscriptionSettingTab(this.app, this));
+    registerSubscriptionCli(this, this.store, this.currencyRegistry);
 
     this.addRibbonIcon("receipt-text", "Open subscriptions", () => {
       void this.openSubscriptions();
@@ -95,8 +94,8 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
     await this.saveData(this.data);
   }
 
-  exportBackupJson(): string {
-    return JSON.stringify(createBackup(this.data), null, 2);
+  exportBackupJson(): Promise<string> {
+    return exportBackup(this.store);
   }
 
   async restoreBackupJson(

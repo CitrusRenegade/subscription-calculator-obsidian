@@ -45,6 +45,13 @@ export class App {
 export class Plugin {
   readonly app = new App();
   readonly registeredViewTypes: string[] = [];
+  readonly cliHandlers = new Map<string, (params: Record<string, string>) => string | Promise<string>>();
+
+  registerCliHandler(command: string, _description: string, _flags: unknown,
+    handler: (params: Record<string, string>) => string | Promise<string>): void {
+    this.cliHandlers.set(command, handler);
+    this.register(() => this.cliHandlers.delete(command));
+  }
 
   async loadData(): Promise<unknown> {
     return null;

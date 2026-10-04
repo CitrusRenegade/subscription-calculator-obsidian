@@ -5,6 +5,7 @@ src/
 ├── main.ts                         Plugin entry point and lifecycle
 ├── types.ts                        Shared domain and data types
 ├── constants.ts                    Shared constants
+├── cli/subscriptions.ts            Read-only CLI queries and backup export
 ├── data/
 │   ├── SubscriptionStore.ts        Subscription state and business logic
 │   ├── defaultData.ts              Default plugin data and settings
@@ -45,7 +46,7 @@ tests/                              Unit and integration tests across store, UI,
 ## `src/data/SubscriptionStore.ts`
 
 This is the main complexity hotspot. A subscription can be effectively disabled during
-the four-second grace period while its persisted `status` is still enabled. Use the
+the 1.5-second grace period while its persisted `status` is still enabled. Use the
 store's view/query methods instead of reading or mutating `PluginData.subscriptions`
 from UI code.
 

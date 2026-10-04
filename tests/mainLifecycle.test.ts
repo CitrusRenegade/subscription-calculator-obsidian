@@ -21,6 +21,7 @@ describe("plugin startup", () => {
       loadData(): Promise<unknown>;
       onload(): Promise<void>;
       registeredViewTypes: string[];
+      cliHandlers: Map<string, (params: Record<string, string>) => string | Promise<string>>;
       saveData(data: unknown): Promise<void>;
     };
     plugin.loadData = async () => ({
@@ -41,6 +42,9 @@ describe("plugin startup", () => {
     await expect(plugin.onload()).resolves.toBeUndefined();
 
     expect(plugin.registeredViewTypes).toEqual(["subscription-calculator-view"]);
+    expect([...plugin.cliHandlers.keys()]).toEqual([
+      "subscription-calculator:list", "subscription-calculator", "subscription-calculator:export",
+    ]);
     expect(notices.messages).toEqual(["Saved-data cleanup failed"]);
     expect(error).toHaveBeenCalledWith(
       "Failed to clean up saved subscription data:",

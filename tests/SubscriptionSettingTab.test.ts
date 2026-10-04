@@ -519,6 +519,42 @@ describe("SubscriptionSettingTab", () => {
     expect(plugin.store.deleteCustomCurrency).toHaveBeenCalledWith("TOK");
   });
 
+  it("waits for async export before downloading JSON and reports export failures", async () => {
+    let resolveExport: ((value: string) => void) | undefined;
+    const plugin = { ...createPlugin(), exportBackupJson: vi.fn(() => new Promise<string>((resolve) => { resolveExport = resolve; })) };
+    const tab = new SubscriptionSettingTab({} as never, plugin as never);
+    const container = (tab as unknown as { containerEl: MockElementLike }).containerEl;
+    const document = container.ownerDocument;
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:backup");
+    Object.assign(document, { body: container, defaultView: {
+      Blob, URL: { createObjectURL, revokeObjectURL: vi.fn() }, setTimeout: () => 0,
+    } });
+    const definitions = (tab as unknown as { getSettingDefinitions(): SettingDefinition[] }).getSettingDefinitions();
+    const exportDefinition = findDefinition(definitions, "Export backup");
+    expect(exportDefinition?.render).toBeTypeOf("function");
+    const settings = Setting as { instances: Array<{ buttons: Array<{ click(): Promise<void> }> }>; reset(): void };
+    settings.reset();
+    const setting = new (Setting as new (container: MockElementLike) => { addButton: unknown })(container);
+    exportDefinition?.render?.(setting, {});
+    const button = settings.instances[0].buttons[0];
+    const clicking = button.click();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    resolveExport?.('{"format":"backup"}');
+    await clicking;
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(await blob.text()).toBe('{"format":"backup"}');
+    expect(document.createdElements.find((element) => element.tagName === "a")?.wasClicked).toBe(true);
+    plugin.exportBackupJson.mockImplementation(() => Promise.reject(new Error("Read failed")));
+    Notice.reset();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await button.click();
+      expect(createObjectURL).toHaveBeenCalledOnce();
+      expect(Notice.messages).toContain("Failed to download backup");
+      expect(errorLog).toHaveBeenCalled();
+    } finally { errorLog.mockRestore(); }
+  });
+
   it("updates declarative settings after restoring a backup", async () => {
     const plugin = {
       ...createPlugin(),

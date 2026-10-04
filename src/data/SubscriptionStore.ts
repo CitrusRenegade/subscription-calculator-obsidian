@@ -238,7 +238,8 @@ export class SubscriptionStore {
   private async mutateAndSave<T>(
     mutation: () => T | Promise<T>,
     shouldSave: (result: T) => boolean = () => true,
-    notifyOnRollback = true
+    notifyOnRollback = true,
+    onRollback: () => void = () => undefined
   ): Promise<T> {
     return this.enqueueWrite(async () => {
       const previous = clonePluginData(this.data);
@@ -249,11 +250,23 @@ export class SubscriptionStore {
         await this.saveData();
       } catch (error) {
         restorePluginData(this.data, previous);
+        onRollback();
         if (notifyOnRollback) this.notify();
         throw error;
       }
       this.notify();
       return result;
+    });
+  }
+
+  /** A detached snapshot taken after preceding saves and their rollback have settled. */
+  async readSnapshot(): Promise<{ data: PluginData; subscriptions: SubscriptionViewItem[] }> {
+    return this.enqueueWrite(() => {
+      const data = clonePluginData(this.data);
+      return {
+        data,
+        subscriptions: data.subscriptions.map((item) => this.toViewItem(item)),
+      };
     });
   }
 
@@ -649,10 +662,13 @@ export class SubscriptionStore {
       ) {
         return;
       }
-      this.disableGracePeriods.delete(id);
       void this
         .mutateAndSave(() => {
-          if (this.disableGraceVersions.get(id) !== version) return false;
+          if (
+            this.disableGraceVersions.get(id) !== version ||
+            this.disableGracePeriods.get(id)?.version !== version
+          ) return false;
+          this.disableGracePeriods.delete(id);
           return this.disableSubscriptionNow(id);
         }, (changed) => changed)
         .then((changed) => {
@@ -689,20 +705,21 @@ export class SubscriptionStore {
           return true;
         },
         (changed) => changed,
-        false
+        false,
+        () => {
+          if (
+            !this.disposed && cancelledGracePeriod &&
+            this.findItem(id)?.status === "enabled"
+          ) {
+            const version = previousGraceVersion ?? cancelledGracePeriod.version;
+            this.disableGraceVersions.set(id, version);
+            this.scheduleDisableGracePeriod(id, version);
+          } else if (previousGraceVersion !== undefined) {
+            this.disableGraceVersions.set(id, previousGraceVersion);
+          }
+        }
       );
     } catch (error) {
-      if (
-        !this.disposed &&
-        cancelledGracePeriod &&
-        this.findItem(id)?.status === "enabled"
-      ) {
-        const version = previousGraceVersion ?? cancelledGracePeriod.version;
-        this.disableGraceVersions.set(id, version);
-        this.scheduleDisableGracePeriod(id, version);
-      } else if (previousGraceVersion !== undefined) {
-        this.disableGraceVersions.set(id, previousGraceVersion);
-      }
       if (!this.disposed) this.notify();
       throw error;
     }
