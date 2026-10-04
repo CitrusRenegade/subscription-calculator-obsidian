@@ -48,6 +48,8 @@ export class SubscriptionsView extends ItemView {
   private floatingSummaryPosition: FloatingSummaryPosition = "top";
   private sortMode: SubscriptionSortMode;
   private sortDirection: SubscriptionSortDirection;
+  private displayedDay = todayLocalDate();
+  private cleanupDateEvents: (() => void) | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -80,9 +82,27 @@ export class SubscriptionsView extends ItemView {
       this.render();
     });
     this.render();
+    const document = this.contentEl.ownerDocument;
+    const window = document.defaultView;
+    const refreshDate = () => {
+      if (document.visibilityState === "hidden" || this.displayedDay === todayLocalDate()) return;
+      this.render();
+    };
+    window?.addEventListener("focus", refreshDate);
+    document.addEventListener("visibilitychange", refreshDate);
+    const leafEvent = this.app.workspace.on("active-leaf-change", (leaf) => {
+      if (leaf === this.leaf) refreshDate();
+    });
+    this.cleanupDateEvents = () => {
+      window?.removeEventListener("focus", refreshDate);
+      document.removeEventListener("visibilitychange", refreshDate);
+      this.app.workspace.offref(leafEvent);
+    };
   }
 
   async onClose(): Promise<void> {
+    this.cleanupDateEvents?.();
+    this.cleanupDateEvents = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.cleanupCardObservers();
@@ -93,6 +113,8 @@ export class SubscriptionsView extends ItemView {
   }
 
   render(): void {
+    const restoreFocus = this.captureFocusedControl();
+    this.displayedDay = todayLocalDate();
     this.cleanupCardObservers();
     this.disconnectSummaryObservers();
     const container = this.contentEl;
@@ -127,6 +149,7 @@ export class SubscriptionsView extends ItemView {
     const showDisabledButton = toolbar.createEl("button", {
       cls: "subscription-calculator-secondary-button",
       text: settings.showDisabled ? "Hide disabled" : "Show disabled",
+      attr: { "data-focus-key": "show-disabled" },
     });
     showDisabledButton.addEventListener("click", () => {
       void this.store
@@ -141,7 +164,7 @@ export class SubscriptionsView extends ItemView {
         "subscription-calculator-secondary-button",
         "subscription-calculator-sort-button",
       ],
-      attr: { "aria-label": "Sort subscription cards" },
+      attr: { "aria-label": "Sort subscription cards", "data-focus-key": "sort" },
     });
     sortButton.createSpan({ text: this.getSortLabel(this.sortMode) });
     const sortButtonIcon = sortButton.createSpan({
@@ -188,6 +211,7 @@ export class SubscriptionsView extends ItemView {
           (card) => this.confirmDelete(item, card)
         )
       );
+      cards.lastElementChild?.setAttribute("data-subscription-id", item.id);
     }
 
     renderAddSubscriptionCard(cards, () =>
@@ -211,6 +235,7 @@ export class SubscriptionsView extends ItemView {
       renderSummaryHeader(body, totals, this.registry, displayPrecision);
 
     container.scrollTop = previousScrollTop;
+    restoreFocus();
     const viewWindow = container.ownerDocument.defaultView;
     if (viewWindow === null) {
       this.setFloatingSummaryVisible(floatingSummaryPosition, false);
@@ -240,6 +265,48 @@ export class SubscriptionsView extends ItemView {
       if (statusBar !== null) summaryResizeObserver.observe(statusBar);
     }
     this.scheduleFloatingSummaryUpdate();
+  }
+
+  private captureFocusedControl(): () => void {
+    const container = this.contentEl;
+    const active = container.ownerDocument.activeElement;
+    if (active === null || !container.contains(active)) return () => undefined;
+    const card = active.closest("[data-subscription-id]");
+    const subscriptionId = card?.getAttribute("data-subscription-id");
+    const focusKey = active.getAttribute("data-focus-key");
+    const controls = card ? Array.from(card.querySelectorAll("button, input, select")) : [];
+    const index = controls.indexOf(active);
+    const draft = active.matches("input") && !(active as HTMLInputElement).hidden
+      ? (active as HTMLInputElement).value : null;
+    const isPriceEditor = active.matches(".subscription-calculator-money-input");
+    const selectionStart = draft === null ? null : (active as HTMLInputElement).selectionStart;
+    const selectionEnd = draft === null ? null : (active as HTMLInputElement).selectionEnd;
+    return () => {
+      const nextCard = Array.from(container.querySelectorAll<HTMLElement>("[data-subscription-id]"))
+        .find((element) => element.getAttribute("data-subscription-id") === subscriptionId);
+      const nextControls = nextCard ? Array.from(nextCard.querySelectorAll<HTMLElement>("button, input, select")) : [];
+      const next = subscriptionId
+        ? nextControls[index]
+        : Array.from(container.querySelectorAll<HTMLElement>("[data-focus-key]"))
+          .find((element) => element.getAttribute("data-focus-key") === focusKey);
+      if (!next || next.tagName !== active.tagName) {
+        (nextCard?.querySelector<HTMLButtonElement>("button") ?? container.querySelector<HTMLButtonElement>("button"))?.focus({ preventScroll: true });
+        return;
+      }
+      if (draft !== null) {
+        (next as HTMLInputElement).value = draft;
+        if (isPriceEditor) {
+          next.hidden = false;
+          const display = next.parentElement?.querySelector<HTMLElement>(".subscription-calculator-money-display");
+          if (display) display.hidden = true;
+          next.parentElement?.style.setProperty("--subscription-field-ch", String(Math.max(draft.length, 5)));
+        }
+      }
+      next.focus({ preventScroll: true });
+      if (selectionStart !== null && selectionEnd !== null) {
+        (next as HTMLInputElement).setSelectionRange(selectionStart, selectionEnd);
+      }
+    };
   }
 
   private cleanupSummaryOverlay(): void {

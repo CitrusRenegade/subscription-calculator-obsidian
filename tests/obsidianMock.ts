@@ -2,6 +2,10 @@ export class MockElement {
   readonly children: MockElement[] = [];
   readonly classes = new Set<string>();
   readonly attributes = new Map<string, string>();
+  readonly style = {
+    setProperty: (_name: string, _value: string) => undefined,
+    removeProperty: (_name: string) => undefined,
+  };
 
   empty(): void {
     this.children.length = 0;

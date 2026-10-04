@@ -19,6 +19,7 @@ type MockSetting = {
   name: string;
   texts: MockText[];
   buttons: MockButton[];
+  dropdowns: Array<{ emitChange(value: string): void }>;
 };
 
 const mockSettings = Setting as unknown as {
@@ -46,6 +47,31 @@ describe("EditSubscriptionModal Service URL", () => {
   beforeEach(() => {
     mockSettings.reset();
     notices.reset();
+  });
+
+  it("clears the icon without closing or committing the current draft", async () => {
+    const updateSubscription = vi.fn().mockResolvedValue(undefined);
+    const clearIcon = vi.fn().mockResolvedValue(undefined);
+    const modal = new EditSubscriptionModal({} as App, { updateSubscription, clearIcon } as unknown as SubscriptionStore,
+      {} as CurrencyRegistry, item);
+    modal.onOpen();
+    mockSettings.instances.find((setting) => setting.name === "Name")?.texts[0]?.emitChange("Draft Spotify");
+    mockSettings.instances.find((setting) => setting.name === "Icon cache")?.buttons[1]?.click();
+    await Promise.resolve();
+    expect((modal as unknown as { isClosed: boolean }).isClosed).toBe(false);
+    expect(updateSubscription).not.toHaveBeenCalled();
+    await (modal as unknown as { save(): Promise<void> }).save();
+    expect(updateSubscription).toHaveBeenCalledWith("spotify", expect.objectContaining({ name: "Draft Spotify" }));
+  });
+
+  it("reveals emoji without replacing the focused mode dropdown", () => {
+    const modal = new EditSubscriptionModal({} as App, {} as SubscriptionStore, {} as CurrencyRegistry, item);
+    modal.onOpen();
+    const mode = mockSettings.instances.find((setting) => setting.name === "Icon mode")!;
+    const count = mockSettings.instances.length;
+    mode.dropdowns[0].emitChange("emoji");
+    expect(mockSettings.instances).toHaveLength(count);
+    expect(mockSettings.instances.find((setting) => setting.name === "Icon mode")).toBe(mode);
   });
 
   afterEach(() => {

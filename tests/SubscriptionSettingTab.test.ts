@@ -10,6 +10,7 @@ vi.mock("obsidian", () => {
 
   class MockDocument {
     readonly createdElements: MockElement[] = [];
+    activeElement: MockElement | null = null;
     readonly defaultView = { confirm: () => true };
 
     createElement(tagName: string): MockElement {
@@ -26,11 +27,16 @@ vi.mock("obsidian", () => {
     files: FileList | null = null;
     wasClicked = false;
     parent: MockElement | undefined;
+    value = "";
+    selectionStart: number | null = null;
+    selectionEnd: number | null = null;
+    readonly attributes = new Map<string, string>();
+    readonly tagName: string;
 
     constructor(
       readonly ownerDocument: MockDocument,
-      readonly tagName = "div"
-    ) {}
+      tagName = "div"
+    ) { this.tagName = tagName.toUpperCase(); }
 
     createEl(tagName: string): MockElement {
       const child = this.ownerDocument.createElement(tagName);
@@ -54,8 +60,23 @@ vi.mock("obsidian", () => {
     }
 
     addClass(_className: string): void {}
+    setAttribute(key: string, value: string): void { this.attributes.set(key, value); }
+    getAttribute(key: string): string | null { return this.attributes.get(key) ?? null; }
+    closest(selector: string): MockElement | null {
+      return this.attributes.has(selector.slice(1, -1)) ? this : this.parent?.closest(selector) ?? null;
+    }
+    querySelectorAll(selector: string): MockElement[] {
+      const matches = (element: MockElement) => selector.startsWith("[")
+        ? element.attributes.has(selector.slice(1, -1))
+        : selector.split(",").some((tag) => tag.trim().toUpperCase() === element.tagName);
+      return this.children.flatMap((child) => [...(matches(child) ? [child] : []), ...child.querySelectorAll(selector)]);
+    }
+    contains(element: MockElement | null): boolean { return this === element || this.children.some((child) => child.contains(element)); }
+    focus(): void { this.ownerDocument.activeElement = this; }
+    setSelectionRange(start: number, end: number): void { this.selectionStart = start; this.selectionEnd = end; }
 
     empty(): void {
+      if (this.contains(this.ownerDocument.activeElement)) this.ownerDocument.activeElement = null;
       this.children.length = 0;
     }
 
@@ -104,16 +125,28 @@ vi.mock("obsidian", () => {
   }
 
   class MockText {
+    value = "";
+    private onChangeCallback: ((value: string) => void) | undefined;
+    constructor(readonly inputEl: MockElement) {}
     setPlaceholder(_value: string): this {
       return this;
     }
 
-    setValue(_value: string): this {
+    setValue(value: string): this {
+      this.value = value;
+      this.inputEl.value = value;
       return this;
     }
 
-    onChange(_callback: (value: string) => void): this {
+    onChange(callback: (value: string) => void): this {
+      this.onChangeCallback = callback;
       return this;
+    }
+
+    change(value: string): void {
+      this.value = value;
+      this.inputEl.value = value;
+      this.onChangeCallback?.(value);
     }
   }
 
@@ -164,9 +197,10 @@ vi.mock("obsidian", () => {
     readonly buttons: MockButton[] = [];
     readonly dropdowns: MockDropdown[] = [];
     readonly toggles: MockToggle[] = [];
+    readonly texts: MockText[] = [];
     name = "";
 
-    constructor(_containerEl: MockElement) {
+    constructor(private readonly containerEl: MockElement) {
       Setting.instances.push(this);
     }
 
@@ -188,7 +222,9 @@ vi.mock("obsidian", () => {
     }
 
     addText(callback: (text: MockText) => void): this {
-      callback(new MockText());
+      const text = new MockText(this.containerEl.createEl("input"));
+      this.texts.push(text);
+      callback(text);
       return this;
     }
 
@@ -350,6 +386,50 @@ function findDefinition(
 }
 
 describe("SubscriptionSettingTab", () => {
+  it("restores the neighboring field after the native parent update takes focus", async () => {
+    const plugin = createPlugin();
+    plugin.data.customCurrencies.push(
+      { code: "TOK", label: "TOK", scale: 2, source: "custom" },
+      { code: "PTS", label: "PTS", scale: 0, source: "custom" }
+    );
+    const tab = new SubscriptionSettingTab({} as never, plugin as never);
+    const page = findDefinition(tab.getSettingDefinitions() as SettingDefinition[], "Custom currencies")!.page!() as unknown as {
+      display(): void;
+      containerEl: { ownerDocument: { activeElement: unknown }; querySelectorAll(selector: string): Array<{ getAttribute(key: string): string | null; querySelectorAll(selector: string): Array<{ focus(): void; selectionStart: number | null; selectionEnd: number | null; setSelectionRange(start: number, end: number): void }> }> };
+    };
+    const settings = Setting as { instances: Array<{ buttons: Array<{ buttonText: string; click(): Promise<void> }> }>; reset(): void };
+    settings.reset();
+    page.display();
+    const getField = () => page.containerEl.querySelectorAll("[data-currency-code]").find((row) => row.getAttribute("data-currency-code") === "PTS")!.querySelectorAll("input")[0];
+    const field = getField();
+    field.focus();
+    field.setSelectionRange(1, 2);
+    vi.spyOn(tab, "update").mockImplementation(() => { page.containerEl.ownerDocument.activeElement = null; });
+    await settings.instances.flatMap((setting) => setting.buttons).find((button) => button.buttonText === "Save")!.click();
+    expect(page.containerEl.ownerDocument.activeElement).toBe(getField());
+    expect(getField().selectionStart).toBe(1);
+    expect(getField().selectionEnd).toBe(2);
+  });
+  it("keeps another currency's draft when a neighboring currency saves", async () => {
+    const plugin = createPlugin();
+    plugin.data.customCurrencies.push(
+      { code: "TOK", label: "TOK", scale: 2, source: "custom" },
+      { code: "PTS", label: "PTS", scale: 0, source: "custom" }
+    );
+    const tab = new SubscriptionSettingTab({} as never, plugin as never);
+    const page = findDefinition(tab.getSettingDefinitions() as SettingDefinition[], "Custom currencies")!.page!();
+    const settings = Setting as { instances: Array<{ name: string; texts: Array<{ value: string; change(value: string): void }>; buttons: Array<{ buttonText: string; click(): Promise<void> }> }>; reset(): void };
+    settings.reset();
+    page.display();
+    const labels = settings.instances.filter((setting) => setting.name === "Currency label");
+    labels[2].texts[0].change("Draft");
+    const save = settings.instances.flatMap((setting) => setting.buttons).find((button) => button.buttonText === "Save")!;
+    await save.click();
+    expect(settings.instances.filter((setting) => setting.name === "Currency label").at(-1)!.texts[0].value).toBe("Draft");
+    const saves = settings.instances.flatMap((setting) => setting.buttons).filter((button) => button.buttonText === "Save");
+    await saves.at(-1)!.click();
+    expect(plugin.store.updateCustomCurrency).toHaveBeenLastCalledWith("PTS", expect.objectContaining({ label: "Draft" }));
+  });
   it("publishes native settings controls and a Custom currencies page", () => {
     const tab = new SubscriptionSettingTab({} as never, createPlugin() as never);
     const definitions = (
@@ -543,7 +623,7 @@ describe("SubscriptionSettingTab", () => {
     await clicking;
     const blob = createObjectURL.mock.calls[0]?.[0];
     expect(await blob.text()).toBe('{"format":"backup"}');
-    expect(document.createdElements.find((element) => element.tagName === "a")?.wasClicked).toBe(true);
+    expect(document.createdElements.find((element) => element.tagName === "A")?.wasClicked).toBe(true);
     plugin.exportBackupJson.mockImplementation(() => Promise.reject(new Error("Read failed")));
     Notice.reset();
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -621,7 +701,7 @@ describe("SubscriptionSettingTab", () => {
     restoreButton?.click();
 
     const fileInput = document.createdElements.find(
-      (element) => element.tagName === "input"
+      (element) => element.tagName === "INPUT"
     );
     expect(fileInput?.wasClicked).toBe(true);
     expect(container.children).not.toContain(fileInput);

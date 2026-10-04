@@ -67,6 +67,7 @@ export class EditSubscriptionModal extends Modal {
         });
       });
 
+    let emojiSetting: Setting;
     new Setting(contentEl).setName("Icon mode").addDropdown((dropdown) =>
       dropdown
         .addOption("auto", "Auto favicon")
@@ -75,17 +76,18 @@ export class EditSubscriptionModal extends Modal {
         .setValue(this.iconMode)
         .onChange((value) => {
           this.iconMode = value as IconMode;
-          this.onOpen();
+          emojiSetting.settingEl.hidden = this.iconMode !== "emoji";
+          emojiSetting.settingEl.style.setProperty("display", this.iconMode === "emoji" ? "" : "none");
         })
     );
 
-    if (this.iconMode === "emoji") {
-      new Setting(contentEl).setName("Emoji").addText((text) =>
+    emojiSetting = new Setting(contentEl).setName("Emoji").addText((text) =>
         text.setValue(this.emoji).onChange((value) => {
           this.emoji = value;
         })
       );
-    }
+    emojiSetting.settingEl.hidden = this.iconMode !== "emoji";
+    emojiSetting.settingEl.style.setProperty("display", this.iconMode === "emoji" ? "" : "none");
 
     new Setting(contentEl)
       .setName("Icon cache")
@@ -142,7 +144,6 @@ export class EditSubscriptionModal extends Modal {
     try {
       await this.store.clearIcon(this.item.id);
       new Notice("Icon cleared");
-      this.close();
     } catch (e) {
       new Notice(e instanceof Error ? e.message : "Failed to clear icon");
     }

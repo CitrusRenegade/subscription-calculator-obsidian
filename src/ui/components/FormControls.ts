@@ -98,7 +98,11 @@ export function createMoneyInput(
   input.addEventListener("input", updateWidth);
   input.addEventListener("blur", finishEditing);
   input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") input.blur();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      input.blur();
+      display.focus();
+    }
   });
   display.addEventListener("click", () => {
     display.hidden = true;

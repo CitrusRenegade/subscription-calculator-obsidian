@@ -305,6 +305,7 @@ export class SubscriptionSettingTab extends PluginSettingTab {
 
 class CustomCurrenciesSettingsPage extends SettingPage {
   title = "Custom currencies";
+  private readonly drafts = new Map<string, { label: string; amountMarker: string; scale: number }>();
 
   constructor(
     private readonly plugin: SubscriptionCalculatorPlugin,
@@ -314,6 +315,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
   }
 
   display(): void {
+    const restoreFocus = this.captureFocusedControl();
     this.containerEl.empty();
     this.renderCustomCurrencyForm(this.containerEl);
 
@@ -323,17 +325,39 @@ class CustomCurrenciesSettingsPage extends SettingPage {
         cls: "subscription-calculator-settings-note",
         text: "No custom currencies yet.",
       });
-      return;
+    } else {
+      for (const currency of customCurrencies) {
+        this.renderCustomCurrencyForm(this.containerEl, currency);
+      }
     }
+    restoreFocus();
+  }
 
-    for (const currency of customCurrencies) {
-      this.renderCustomCurrencyForm(this.containerEl, currency);
-    }
+  private captureFocusedControl(): () => void {
+    const active = this.containerEl.ownerDocument.activeElement;
+    const focusedRow = active?.closest("[data-currency-code]");
+    const focusedCode = focusedRow?.getAttribute("data-currency-code");
+    const focusedIndex = focusedRow && active
+      ? Array.from(focusedRow.querySelectorAll("input, button, select")).indexOf(active) : -1;
+    const selectionStart = active?.tagName === "INPUT" ? (active as HTMLInputElement).selectionStart : null;
+    const selectionEnd = active?.tagName === "INPUT" ? (active as HTMLInputElement).selectionEnd : null;
+    return () => {
+      if (!focusedCode) return;
+      const row = Array.from(this.containerEl.querySelectorAll<HTMLElement>("[data-currency-code]"))
+        .find((element) => element.getAttribute("data-currency-code") === focusedCode);
+      const control = row?.querySelectorAll<HTMLElement>("input, button, select")[focusedIndex];
+      control?.focus({ preventScroll: true });
+      if (control?.tagName === "INPUT" && selectionStart != null && selectionEnd != null) {
+        (control as HTMLInputElement).setSelectionRange(selectionStart, selectionEnd);
+      }
+    };
   }
 
   private refreshAfterCustomCurrencyChange(): void {
+    const restoreFocus = this.captureFocusedControl();
     this.refreshSettingsTab();
     this.display();
+    restoreFocus();
   }
 
   private renderCustomCurrencyForm(
@@ -345,6 +369,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
     const wrapper = containerEl.createDiv({
       cls: "subscription-calculator-currency-settings",
     });
+    wrapper.setAttribute("data-currency-code", currency?.code ?? "new");
     const title = wrapper.createDiv({
       text: isEdit
         ? `${getCurrencySelectLabel(currency)}${currency.isArchived ? " (archived)" : ""}`
@@ -352,9 +377,14 @@ class CustomCurrenciesSettingsPage extends SettingPage {
     });
     title.addClass("subscription-calculator-currency-settings-title");
 
-    let label = currency?.label ?? "";
-    let amountMarker = currency?.amountMarker ?? "";
-    let scale = currency?.scale ?? 2;
+    const draftKey = currency?.code ?? "new";
+    const draft = this.drafts.get(draftKey) ?? {
+      label: currency?.label ?? "",
+      amountMarker: currency?.amountMarker ?? "",
+      scale: currency?.scale ?? 2,
+    };
+    let { label, amountMarker, scale } = draft;
+    const rememberDraft = () => this.drafts.set(draftKey, { label, amountMarker, scale });
     const originalScale = scale;
     const hasAdvancedPrecision = isEdit && originalScale !== 0 && originalScale !== 2;
 
@@ -381,6 +411,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
       .addText((text) =>
         text.setPlaceholder("TOK").setValue(label).onChange((value) => {
           label = value;
+          rememberDraft();
           updatePreview();
         })
       );
@@ -397,6 +428,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
           .setValue(amountMarker)
           .onChange((value) => {
             amountMarker = value;
+            rememberDraft();
             updatePreview();
           })
       );
@@ -409,6 +441,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
           .setDisabled(isUsed)
           .onChange((value) => {
             scale = value ? 2 : 0;
+            rememberDraft();
             updatePreview();
           })
       );
@@ -467,6 +500,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
     if (isEdit) {
       action.addButton((button) =>
         button.setButtonText("Save").setCta().onClick(async () => {
+          const submittedDraft = this.drafts.get(draftKey);
           try {
             await this.plugin.store.updateCustomCurrency(currency.code, {
               label,
@@ -474,6 +508,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
               scale,
             });
             new Notice("Custom currency saved");
+            if (this.drafts.get(draftKey) === submittedDraft) this.drafts.delete(draftKey);
             this.refreshAfterCustomCurrencyChange();
           } catch (error) {
             new Notice(error instanceof Error ? error.message : "Failed to save currency");
@@ -486,6 +521,7 @@ class CustomCurrenciesSettingsPage extends SettingPage {
           try {
             await this.plugin.store.deleteCustomCurrency(currency.code);
             new Notice(isUsed ? "Currency archived" : "Currency deleted");
+            this.drafts.delete(draftKey);
             this.refreshAfterCustomCurrencyChange();
           } catch (error) {
             new Notice(error instanceof Error ? error.message : "Failed to remove currency");
@@ -497,9 +533,11 @@ class CustomCurrenciesSettingsPage extends SettingPage {
 
     action.addButton((button) =>
       button.setButtonText("Add currency").setCta().onClick(async () => {
+        const submittedDraft = this.drafts.get(draftKey);
         try {
           await this.plugin.store.addCustomCurrency({ label, amountMarker, scale });
           new Notice("Custom currency added");
+          if (this.drafts.get(draftKey) === submittedDraft) this.drafts.delete(draftKey);
           this.refreshAfterCustomCurrencyChange();
         } catch (error) {
           new Notice(error instanceof Error ? error.message : "Failed to add currency");

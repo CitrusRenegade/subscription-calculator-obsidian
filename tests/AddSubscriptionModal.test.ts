@@ -1,5 +1,5 @@
 import { App, Setting } from "obsidian";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import type { CurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { AddSubscriptionModal } from "../src/ui/AddSubscriptionModal";
@@ -24,6 +24,36 @@ function latestSetting(name: string): MockSetting {
 describe("AddSubscriptionModal", () => {
   beforeEach(() => {
     mockSettings.reset();
+  });
+
+  it("submits once while pending and permits retry after failure", async () => {
+    let rejectSave!: (error: Error) => void;
+    const addSubscription = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; }));
+    const modal = new AddSubscriptionModal({} as App, { addSubscription } as unknown as SubscriptionStore,
+      {} as CurrencyRegistry, "USD") as unknown as { submit(): Promise<void>; isClosed: boolean };
+    const first = modal.submit();
+    void modal.submit();
+    expect(addSubscription).toHaveBeenCalledOnce();
+    rejectSave(new Error("disk full"));
+    await first;
+    expect(modal.isClosed).toBe(false);
+    addSubscription.mockImplementation(async () => undefined);
+    await modal.submit();
+    expect(addSubscription).toHaveBeenCalledTimes(2);
+    expect(modal.isClosed).toBe(true);
+  });
+
+  it("reveals custom days without recreating existing settings", () => {
+    const modal = new AddSubscriptionModal({} as App, {} as SubscriptionStore, {
+      getDefault: () => ({ code: "USD" }),
+      listSelectable: () => [{ code: "USD", label: "USD", scale: 2, source: "builtin" }],
+    } as CurrencyRegistry, "USD");
+    modal.onOpen();
+    const name = latestSetting("Name");
+    const count = mockSettings.instances.length;
+    latestSetting("Billing period").dropdowns[0]?.emitChange("custom");
+    expect(mockSettings.instances).toHaveLength(count);
+    expect(latestSetting("Name")).toBe(name);
   });
 
   it("keeps entered fields visible when changing the billing period", () => {

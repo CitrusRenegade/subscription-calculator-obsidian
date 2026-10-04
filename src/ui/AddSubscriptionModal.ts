@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Setting, type ButtonComponent } from "obsidian";
 import { DEFAULT_CUSTOM_BILLING_PERIOD_DAYS } from "../constants";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
@@ -15,6 +15,8 @@ export class AddSubscriptionModal extends Modal {
   private customDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
   private serviceUrl = "";
   private disabled = false;
+  private submitting = false;
+  private addButton: ButtonComponent | null = null;
 
   constructor(
     app: App,
@@ -64,6 +66,7 @@ export class AddSubscriptionModal extends Modal {
       });
     });
 
+    let customDaysSetting: Setting;
     new Setting(contentEl).setName("Billing period").addDropdown((dropdown) => {
       dropdown
         .addOption("weekly", "Weekly")
@@ -74,7 +77,8 @@ export class AddSubscriptionModal extends Modal {
         .setValue(this.billingPeriod)
         .onChange((value) => {
           this.billingPeriod = value as BillingPeriod;
-          this.onOpen();
+          customDaysSetting.settingEl.hidden = this.billingPeriod !== "custom";
+          customDaysSetting.settingEl.style.setProperty("display", this.billingPeriod === "custom" ? "" : "none");
         });
     });
 
@@ -88,8 +92,7 @@ export class AddSubscriptionModal extends Modal {
         });
       });
 
-    if (this.billingPeriod === "custom") {
-      new Setting(contentEl).setName("Custom period days").addText((text) =>
+    customDaysSetting = new Setting(contentEl).setName("Custom period days").addText((text) =>
         text
           .setPlaceholder(String(DEFAULT_CUSTOM_BILLING_PERIOD_DAYS))
           .setValue(String(this.customDays))
@@ -97,7 +100,8 @@ export class AddSubscriptionModal extends Modal {
             this.customDays = Number(value);
           })
       );
-    }
+    customDaysSetting.settingEl.hidden = this.billingPeriod !== "custom";
+    customDaysSetting.settingEl.style.setProperty("display", this.billingPeriod === "custom" ? "" : "none");
 
     new Setting(contentEl)
       .setName("Service URL")
@@ -123,15 +127,20 @@ export class AddSubscriptionModal extends Modal {
       "Disable subscription"
     );
 
-    new Setting(contentEl).addButton((button) =>
+    new Setting(contentEl).addButton((button) => {
+      this.addButton = button;
       button
         .setButtonText("Add")
         .setCta()
-        .onClick(() => void this.submit())
-    );
+        .setDisabled(this.submitting)
+        .onClick(() => void this.submit());
+    });
   }
 
   private async submit(): Promise<void> {
+    if (this.submitting) return;
+    this.submitting = true;
+    this.addButton?.setDisabled(true);
     try {
       await this.store.addSubscription({
         name: this.name,
@@ -147,6 +156,9 @@ export class AddSubscriptionModal extends Modal {
       this.close();
     } catch (e) {
       new Notice(e instanceof Error ? e.message : "Failed to add subscription");
+    } finally {
+      this.submitting = false;
+      this.addButton?.setDisabled(false);
     }
   }
 }
