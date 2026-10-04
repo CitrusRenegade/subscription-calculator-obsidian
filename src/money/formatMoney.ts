@@ -25,6 +25,7 @@ export function formatMoney(
 export function moneyToInputValue(money: Money, registry: CurrencyRegistry): string {
   const currency = registry.get(money.currencyCode);
   if (!currency) return String(money.amountMinor);
-  const factor = 10 ** currency.scale;
-  return (money.amountMinor / factor).toFixed(currency.scale);
+  const digits = String(money.amountMinor).padStart(currency.scale + 1, "0");
+  if (currency.scale === 0) return digits;
+  return `${digits.slice(0, -currency.scale)}.${digits.slice(-currency.scale)}`;
 }

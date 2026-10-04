@@ -12,7 +12,7 @@ import {
   getGraphemes,
   normalizeCurrencyAmountMarker,
 } from "../src/money/currencyValidation";
-import { formatMoney } from "../src/money/formatMoney";
+import { formatMoney, moneyToInputValue } from "../src/money/formatMoney";
 import { parseMoneyInput } from "../src/money/parseMoneyInput";
 import { calculateTotalsByCurrency, getPerYearMinor, moneyFromMinor } from "../src/money/totals";
 import type { CurrencyMeta, SubscriptionItem } from "../src/types";
@@ -63,6 +63,18 @@ function subscription(
 }
 
 describe("money helpers", () => {
+  it("preserves accepted minor units when an unchanged price is edited", () => {
+    for (const amountMinor of [0, 1, 99, 100, 9007199254740990, Number.MAX_SAFE_INTEGER]) {
+      for (const [currencyCode, currencyRegistry] of [
+        ["USD", registry],
+        ["JPY", registry],
+        ["CUSTOM_HIGH", highPrecisionCustomRegistry],
+      ] as const) {
+        const money = { amountMinor, currencyCode };
+        expect(parseMoneyInput(moneyToInputValue(money, currencyRegistry), currencyCode, currencyRegistry)).toEqual(money);
+      }
+    }
+  });
   it("keeps built-in currencies available", () => {
     expect(registry.get("USD")?.label).toBe("USD");
     expect(registry.get("JPY")?.scale).toBe(0);
