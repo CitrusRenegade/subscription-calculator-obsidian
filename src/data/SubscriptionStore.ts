@@ -6,6 +6,7 @@ import {
 } from "../constants";
 import type {
   AddSubscriptionInput,
+  CachedIcon,
   BillingPeriod,
   CurrencyMeta,
   MoneyTotal,
@@ -19,7 +20,7 @@ import type { CurrencyRegistry } from "../money/CurrencyRegistry";
 import type { Clock } from "../date/Clock";
 import { systemClock } from "../date/Clock";
 import { parseDateOnly, todayLocalDate } from "../date/dateOnly";
-import { normalizeUrlInput } from "../icons/url";
+import { getDomainFromUrl, normalizeUrlInput } from "../icons/url";
 import { moneyToInputValue } from "../money/formatMoney";
 import { parseMoneyInput } from "../money/parseMoneyInput";
 import { calculateTotalsByCurrency } from "../money/totals";
@@ -41,6 +42,11 @@ export interface IconRefreshSummary {
   refreshed: number;
   failed: number;
   skipped: number;
+}
+
+interface IconRequest {
+  promise: Promise<CachedIcon | null>;
+  domainRevision: number;
 }
 
 function createId(): string {
@@ -132,6 +138,9 @@ export class SubscriptionStore {
   private readonly disableGraceVersions = new Map<string, number>();
   private writeQueue: Promise<void> = Promise.resolve();
   private disposed = false;
+  private iconEpoch = 0;
+  private readonly iconRevisions = new Map<string, number>();
+  private readonly iconDomainRevisions = new Map<string, number>();
 
   constructor(
     private readonly data: PluginData,
@@ -274,7 +283,9 @@ export class SubscriptionStore {
     mutation: (settings: PluginData["settings"]) => void
   ): Promise<void> {
     await this.mutateAndSave(() => {
+      const previousProvider = this.data.settings.faviconProvider;
       mutation(this.data.settings);
+      if (previousProvider !== this.data.settings.faviconProvider) this.iconEpoch++;
       this.ensureDefaultCurrencyValid();
     });
   }
@@ -285,7 +296,11 @@ export class SubscriptionStore {
   ): Promise<BackupImportReport | null> {
     return this.enqueueWrite(() =>
       restoreBackupData(this.data, text, {
-        confirm: confirmRestore,
+        confirm: (report) => {
+          const confirmed = confirmRestore(report);
+          if (confirmed) this.iconEpoch++;
+          return confirmed;
+        },
         flush: () => this.flushDisableGracePeriodsNow(),
         save: this.saveData,
         notify: () => this.notify(),
@@ -362,7 +377,7 @@ export class SubscriptionStore {
   }
 
   async addSubscription(input: AddSubscriptionInput): Promise<void> {
-    await this.mutateAndSave(async () => {
+    const id = await this.mutateAndSave(() => {
       const name = input.name.trim();
       if (!name) throw new Error("Subscription name is required.");
 
@@ -409,8 +424,9 @@ export class SubscriptionStore {
       };
 
       this.data.subscriptions.push(item);
-      await this.tryEnsureIcon(item);
+      return item.id;
     });
+    await this.tryEnsureIcon(id);
   }
 
   async addCustomCurrency(input: CustomCurrencyInput): Promise<void> {
@@ -525,7 +541,8 @@ export class SubscriptionStore {
     id: string,
     patch: UpdateSubscriptionInput
   ): Promise<void> {
-    await this.mutateAndSave(async () => {
+    let shouldRefreshIcon = false;
+    await this.mutateAndSave(() => {
       const item = this.findItem(id);
       if (!item) return false;
       if (
@@ -582,7 +599,6 @@ export class SubscriptionStore {
         item.customBillingPeriodDays = undefined;
       }
 
-      let shouldRefreshIcon = false;
       if (patch.serviceUrl !== undefined) {
         const serviceUrl = normalizeUrlInput(patch.serviceUrl);
         shouldRefreshIcon = serviceUrl !== item.serviceUrl;
@@ -602,10 +618,11 @@ export class SubscriptionStore {
       }
 
       item.updatedOn = todayLocalDate(this.clock);
-      if (shouldRefreshIcon) await this.tryEnsureIcon(item);
+      if (patch.serviceUrl !== undefined || patch.icon) this.nextIconRevision(id);
       this.pruneUnusedArchivedCustomCurrencies();
       return true;
     }, (changed) => changed);
+    if (shouldRefreshIcon) await this.tryEnsureIcon(id);
   }
 
   async setSubscriptionEnabled(id: string, enabled: boolean): Promise<void> {
@@ -700,6 +717,9 @@ export class SubscriptionStore {
           }
           previousGraceVersion = this.disableGraceVersions.get(id);
           this.disableGraceVersions.delete(id);
+          this.nextIconRevision(id);
+          const item = this.findItem(id);
+          if (item) this.iconService.clearIcon(item);
           this.data.subscriptions = this.data.subscriptions.filter((item) => item.id !== id);
           this.pruneUnusedArchivedCustomCurrencies();
           return true;
@@ -726,48 +746,36 @@ export class SubscriptionStore {
   }
 
   async refreshIcon(id: string): Promise<boolean> {
-    return this.mutateAndSave(async () => {
-      const item = this.findItem(id);
-      if (!item) return false;
-      const refreshed = await this.tryRefreshIcon(item);
-      if (refreshed) item.updatedOn = todayLocalDate(this.clock);
-      return refreshed;
-    }, (refreshed) => refreshed);
+    return this.fetchAndCommitIcon(id, false);
   }
 
   async refreshAllIcons(): Promise<IconRefreshSummary> {
-    return this.mutateAndSave(async () => {
-      const summary: IconRefreshSummary = { refreshed: 0, failed: 0, skipped: 0 };
-      const today = todayLocalDate(this.clock);
-
-      for (const item of this.data.subscriptions) {
-        if (item.icon.mode !== "auto" || !item.serviceUrl) {
-          summary.skipped += 1;
-          continue;
-        }
-
-        try {
-          const refreshed = await this.iconService.refreshAutoIcon(item);
-          if (!refreshed) {
-            summary.skipped += 1;
-            continue;
-          }
-          item.updatedOn = today;
-          summary.refreshed += 1;
-        } catch (e) {
-          console.warn(`Failed to refresh subscription icon for ${item.name}:`, e);
-          summary.failed += 1;
-        }
+    const batch = await this.enqueueWrite(() => ({
+      epoch: this.iconEpoch,
+      items: this.data.subscriptions.map(item => ({
+        item: { ...item, icon: { ...item.icon } },
+        revision: this.iconRevisions.get(item.id) ?? 0,
+      })),
+    }));
+    const summary: IconRefreshSummary = { refreshed: 0, failed: 0, skipped: 0 };
+    const requests = new Map<string, IconRequest>();
+    for (const { item, revision } of batch.items) {
+      if (item.icon.mode !== "auto" || !item.serviceUrl) { summary.skipped++; continue; }
+      try {
+        if (await this.fetchAndCommitIcon(item.id, false, requests, true, { epoch: batch.epoch, revision })) summary.refreshed++;
+        else summary.skipped++;
+      } catch (error) {
+        console.warn(`Failed to refresh subscription icon for ${item.name}:`, error);
+        summary.failed++;
       }
-
-      return summary;
-    }, (summary) => summary.refreshed > 0);
+    }
+    return summary;
   }
-
   async clearIcon(id: string): Promise<void> {
     await this.mutateAndSave(() => {
       const item = this.findItem(id);
       if (!item) return false;
+      this.nextIconRevision(id);
       this.iconService.clearIcon(item);
       item.updatedOn = todayLocalDate(this.clock);
       return true;
@@ -802,23 +810,89 @@ export class SubscriptionStore {
     return calculateTotalsByCurrency(this.getEnabledSubscriptions());
   }
 
-  private async tryEnsureIcon(item: SubscriptionItem): Promise<void> {
-    try {
-      await this.iconService.ensureAutoIcon(item);
-    } catch (e) {
-      console.warn("Failed to fetch subscription icon:", e);
-    }
+  private async tryEnsureIcon(id: string): Promise<void> {
+    try { await this.fetchAndCommitIcon(id, true); }
+    catch (error) { console.warn("Failed to fetch subscription icon:", error); }
   }
 
-  private async tryRefreshIcon(item: SubscriptionItem): Promise<boolean> {
-    try {
-      return await this.iconService.refreshAutoIcon(item);
-    } catch (e) {
-      console.warn("Failed to refresh subscription icon:", e);
-      return false;
-    }
+  private nextIconRevision(id: string): number {
+    const revision = (this.iconRevisions.get(id) ?? 0) + 1;
+    this.iconRevisions.set(id, revision);
+    return revision;
   }
 
+  private async fetchAndCommitIcon(
+    id: string,
+    ensure: boolean,
+    requests?: Map<string, IconRequest>,
+    autoOnly = false,
+    expected?: { epoch: number; revision: number }
+  ): Promise<boolean> {
+    const intent = await this.enqueueWrite(() => {
+      const item = this.findItem(id);
+      if (expected && (expected.epoch !== this.iconEpoch || expected.revision !== (this.iconRevisions.get(id) ?? 0))) return null;
+      if (this.disposed || !item || ((ensure || autoOnly) && item.icon.mode !== "auto") ||
+          this.data.settings.faviconProvider === "none" || !getDomainFromUrl(item.serviceUrl)) return null;
+      if (ensure && this.iconService.getCachedIcon(item)) return null;
+      return {
+        item: { ...item, icon: { ...item.icon }, price: { ...item.price } },
+        revision: this.nextIconRevision(id), epoch: this.iconEpoch,
+        provider: this.data.settings.faviconProvider,
+        domainRevision: this.iconDomainRevisions.get(getDomainFromUrl(item.serviceUrl)!) ?? 0,
+      };
+    });
+    if (!intent) return false;
+    const domain = getDomainFromUrl(intent.item.serviceUrl)!;
+    let domainRevision = intent.domainRevision;
+    let cached = ensure ? this.iconService.getReusableIcon(intent.item) : null;
+    const reusingCache = cached !== null;
+    if (!cached) {
+      let request = requests?.get(domain);
+      if (!request) {
+        request = {
+          promise: this.iconService.fetchAutoIcon(intent.item, intent.epoch),
+          domainRevision,
+        };
+        requests?.set(domain, request);
+      }
+      domainRevision = request.domainRevision;
+      try { cached = await request.promise; }
+      catch (error) {
+        if (autoOnly) throw error;
+        console.warn("Failed to fetch subscription icon:", error);
+        return false;
+      }
+    }
+    if (!cached) return false;
+    const candidate = cached;
+    let previousDomainRevision: number | undefined;
+    let domainRevisionChanged = false;
+    return this.mutateAndSave(() => {
+      const current = this.findItem(id);
+      if (this.disposed || !current || this.iconEpoch !== intent.epoch ||
+          this.iconRevisions.get(id) !== intent.revision ||
+          current.serviceUrl !== intent.item.serviceUrl ||
+          current.icon.mode !== intent.item.icon.mode ||
+          this.data.settings.faviconProvider !== intent.provider) return false;
+      // Another item may have committed newer bytes to this shared domain cache.
+      const currentDomainRevision = this.iconDomainRevisions.get(domain) ?? 0;
+      const selected = currentDomainRevision === domainRevision
+        ? candidate : this.iconService.getReusableIcon(current);
+      if (!selected) return false;
+      this.iconService.attachIcon(current, selected);
+      if (!reusingCache && currentDomainRevision === domainRevision) {
+        previousDomainRevision = this.iconDomainRevisions.get(domain);
+        this.iconDomainRevisions.set(domain, currentDomainRevision + 1);
+        domainRevisionChanged = true;
+      }
+      current.updatedOn = todayLocalDate(this.clock);
+      return true;
+    }, (changed) => changed, true, () => {
+      if (!domainRevisionChanged) return;
+      if (previousDomainRevision === undefined) this.iconDomainRevisions.delete(domain);
+      else this.iconDomainRevisions.set(domain, previousDomainRevision);
+    });
+  }
   private disableSubscriptionNow(id: string): boolean {
     const current = this.findItem(id);
     if (!current || current.status === "disabled") return false;

@@ -20,6 +20,7 @@ import { parseDateOnly } from "../date/dateOnly";
 import { DEFAULT_SETTINGS, createDefaultData } from "./defaultData";
 import { sanitizeCustomCurrency } from "../money/currencyValidation";
 import { BUILTIN_CURRENCIES } from "../money/currencies";
+import { isLocalImageData } from "../icons/imageData";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -165,7 +166,7 @@ function migrateIconCache(value: unknown): Record<string, CachedIcon> {
     const dataUrl = asString(rawIcon.dataUrl);
     const contentType = asString(rawIcon.contentType);
     const fetchedOn = parseDateOnly(rawIcon.fetchedOn);
-    if (!sourceUrl || !serviceDomain || !dataUrl || !contentType || !fetchedOn) continue;
+    if (!sourceUrl || !serviceDomain || !dataUrl || !isLocalImageData(dataUrl) || !contentType || !fetchedOn) continue;
     Object.defineProperty(result, key, {
       value: {
         cacheKey: key,
