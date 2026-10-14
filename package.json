@@ -27,6 +27,7 @@
     "eslint-plugin-obsidianmd": "^0.4.2",
     "jsdom": "26.1.0",
     "obsidian": "1.13.1",
+    "playwright": "^1.64.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.6"
   }

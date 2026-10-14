@@ -1,12 +1,18 @@
 import esbuild from "esbuild";
-import { spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { readFileSync, watchFile } from "fs";
 import { builtinModules } from "module";
 import process from "process";
+import path from "node:path";
 
 const prod = process.argv[2] === "production";
 const watchReload = process.argv.includes("--watch-reload");
 const reloadOnly = process.argv.includes("--reload-only");
+const devVault = process.env.OBSIDIAN_DEV_VAULT?.trim();
+const devVaultPath = process.env.OBSIDIAN_DEV_VAULT_PATH;
+if ((watchReload || reloadOnly) && (!devVault || !devVaultPath || !path.isAbsolute(devVaultPath))) {
+  throw new Error("Reload requires OBSIDIAN_DEV_VAULT and absolute OBSIDIAN_DEV_VAULT_PATH from repository-local settings; refusing active-vault fallback");
+}
 const pluginId = JSON.parse(readFileSync("manifest.json", "utf8")).id;
 const obsidianCliCandidates = process.env.OBSIDIAN_CLI
   ? [process.env.OBSIDIAN_CLI]
@@ -48,6 +54,22 @@ async function runObsidianCli(args) {
   let lastError;
 
   for (const command of obsidianCliCandidates) {
+    try {
+      const resolved = execFileSync(command, [`vault=${devVault}`, "vault", "info=path"], { encoding: "utf8", timeout: 10000, windowsHide: true }).trim();
+      // macOS APFS is case-insensitive by default, like Windows NTFS: compare
+      // vault paths case-insensitively there too, so a valid-but-differently-cased
+      // spelling never refuses a reload.
+      const caseFold = process.platform === "win32" || process.platform === "darwin";
+      const normalize = (value) => caseFold ? path.resolve(value).toLowerCase() : path.resolve(value);
+      if (!resolved || normalize(resolved) !== normalize(devVaultPath)) {
+        console.error("[reload] CLI resolved a different vault path; refusing reload");
+        return 1;
+      }
+    } catch (error) {
+      if (error.code === "ENOENT") { lastError = error; continue; }
+      console.error(`[reload] Vault verification failed: ${error.message}`);
+      return 1;
+    }
     const result = await spawnObsidianCli(command, args);
 
     if (result.code === 0) {
