@@ -4,7 +4,7 @@ import type { App as ObsidianApp } from "obsidian";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { BuiltinCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { AddSubscriptionModal } from "../src/ui/AddSubscriptionModal";
-import { App, Notice, changeInput, changeSelect, findButton, findSetting, resetObsidianDom } from "./helpers/obsidianDom";
+import { App, Notice, changeInput, changeSelect, expectRowVisible, findButton, findSetting, resetObsidianDom } from "./helpers/obsidianDom";
 import { deferred } from "./helpers/deferred";
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
 function openModal(addSubscription = vi.fn(async () => undefined)) {
@@ -40,16 +40,13 @@ describe("AddSubscriptionModal", () => {
     const period = findSetting(modal.contentEl, "Billing period").dropdowns[0].selectEl;
     const daysRow = findSetting(modal.contentEl, "Custom period days").settingEl;
     const name = findSetting(modal.contentEl, "Name").texts[0].inputEl;
-    expect(daysRow.hidden).toBe(true);
-    expect(daysRow.style.display).toBe("none");
+    expectRowVisible(daysRow, false);
     period.focus(); changeSelect(period, "custom");
-    expect(daysRow.hidden).toBe(false);
-    expect(daysRow.style.display).not.toBe("none");
+    expectRowVisible(daysRow, true);
     expect(document.activeElement).toBe(period);
     expect(findSetting(modal.contentEl, "Name").texts[0].inputEl).toBe(name);
     changeSelect(period, "monthly");
-    expect(daysRow.hidden).toBe(true);
-    expect(daysRow.style.display).toBe("none");
+    expectRowVisible(daysRow, false);
     expect(document.activeElement).toBe(period);
   });
   it("guards a re-entered Add callback independently of the disabled button", async () => {

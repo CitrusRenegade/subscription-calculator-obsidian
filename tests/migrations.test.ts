@@ -5,6 +5,8 @@ import {
 } from "../src/constants";
 import { migratePluginData } from "../src/data/migrations";
 import { DEFAULT_SETTINGS } from "../src/data/defaultData";
+import { sub } from "./helpers/subscriptionFactory";
+import { withProtoKey } from "./helpers/protoKey";
 
 describe("plugin data migrations", () => {
   it("OBS-36 defaults the floating yearly total to off and preserves explicit choices", () => {
@@ -51,21 +53,37 @@ describe("plugin data migrations", () => {
     ).toBe("TOK");
   });
 
-  it("repairs a custom billing period without a day count", () => {
+  it.each([
+    ["without a day count", undefined],
+    ["with a fractional day count", 1.5],
+    ["beyond the supported date range", MAX_CUSTOM_BILLING_PERIOD_DAYS + 1],
+  ] as const)("repairs a custom billing period %s", (_label, days) => {
     const data = migratePluginData({
       subscriptions: [
-        {
-          id: "spotify",
-          name: "Spotify",
-          status: "enabled",
-          price: { amountMinor: 999, currencyCode: "USD" },
-          startDate: "2026-06-01",
+        sub({
+          id: "period",
           billingPeriod: "custom",
-          cancelUrl: "https://spotify.com/cancel",
+          customBillingPeriodDays: days,
           icon: { mode: "auto" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
+        }),
+      ],
+    });
+
+    expect(data.subscriptions[0]?.customBillingPeriodDays).toBe(
+      DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
+    );
+  });
+
+  it("drops unknown persisted fields while repairing a custom billing period", () => {
+    const data = migratePluginData({
+      subscriptions: [
+        sub({
+          id: "spotify",
+          billingPeriod: "custom",
+          startDate: "2026-06-01",
+          icon: { mode: "auto" },
+          cancelUrl: "https://spotify.com/cancel",
+        }),
       ],
     });
 
@@ -75,63 +93,13 @@ describe("plugin data migrations", () => {
     expect(data.subscriptions[0]).not.toHaveProperty("cancelUrl");
   });
 
-  it("repairs a custom billing period with a fractional day count", () => {
-    const data = migratePluginData({
-      subscriptions: [
-        {
-          id: "fractional-period",
-          name: "Fractional period",
-          status: "enabled",
-          price: { amountMinor: 999, currencyCode: "USD" },
-          billingPeriod: "custom",
-          customBillingPeriodDays: 1.5,
-          icon: { mode: "auto" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
-      ],
-    });
-
-    expect(data.subscriptions[0]?.customBillingPeriodDays).toBe(
-      DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
-    );
-  });
-
-  it("repairs a custom billing period beyond the supported date range", () => {
-    const data = migratePluginData({
-      subscriptions: [
-        {
-          id: "oversized-period",
-          name: "Oversized period",
-          status: "enabled",
-          price: { amountMinor: 999, currencyCode: "USD" },
-          billingPeriod: "custom",
-          customBillingPeriodDays: MAX_CUSTOM_BILLING_PERIOD_DAYS + 1,
-          icon: { mode: "auto" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
-      ],
-    });
-
-    expect(data.subscriptions[0]?.customBillingPeriodDays).toBe(
-      DEFAULT_CUSTOM_BILLING_PERIOD_DAYS
-    );
-  });
-
   it("preserves special icon-cache keys as own entries", () => {
-    const iconCache: Record<string, unknown> = {};
-    Object.defineProperty(iconCache, "__proto__", {
-      value: {
-        sourceUrl: "https://example.com/favicon.png",
-        serviceDomain: "example.com",
-        dataUrl: "data:image/png;base64,icon",
-        contentType: "image/png",
-        fetchedOn: "2026-06-01",
-      },
-      enumerable: true,
-      configurable: true,
-      writable: true,
+    const iconCache: Record<string, unknown> = withProtoKey({}, {
+      sourceUrl: "https://example.com/favicon.png",
+      serviceDomain: "example.com",
+      dataUrl: "data:image/png;base64,icon",
+      contentType: "image/png",
+      fetchedOn: "2026-06-01",
     });
 
     const data = migratePluginData({ iconCache });
@@ -143,27 +111,8 @@ describe("plugin data migrations", () => {
   it("does not synthesize disabled dates during migration", () => {
     const data = migratePluginData({
       subscriptions: [
-        {
-          id: "paused",
-          name: "Paused",
-          status: "disabled",
-          price: { amountMinor: 999, currencyCode: "USD" },
-          billingPeriod: "monthly",
-          icon: { mode: "none" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-10",
-        },
-        {
-          id: "explicitly-disabled",
-          name: "Explicitly disabled",
-          status: "disabled",
-          price: { amountMinor: 999, currencyCode: "USD" },
-          billingPeriod: "monthly",
-          icon: { mode: "none" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-10",
-          disabledOn: "2026-06-07",
-        },
+        sub({ id: "paused", status: "disabled", updatedOn: "2026-06-10" }),
+        sub({ id: "explicitly-disabled", status: "disabled", updatedOn: "2026-06-10", disabledOn: "2026-06-07" }),
       ],
     });
 
@@ -260,46 +209,10 @@ describe("plugin data migrations", () => {
   it("drops subscriptions that violate persisted-data invariants", () => {
     const data = migratePluginData({
       subscriptions: [
-        {
-          id: "duplicate",
-          name: "First",
-          status: "enabled",
-          price: { amountMinor: 100, currencyCode: "USD" },
-          billingPeriod: "monthly",
-          icon: { mode: "none" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
-        {
-          id: "duplicate",
-          name: "Second",
-          status: "enabled",
-          price: { amountMinor: 100, currencyCode: "USD" },
-          billingPeriod: "monthly",
-          icon: { mode: "none" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
-        {
-          id: "negative",
-          name: "Negative",
-          status: "enabled",
-          price: { amountMinor: -1, currencyCode: "USD" },
-          billingPeriod: "monthly",
-          icon: { mode: "none" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
-        {
-          id: "unknown-currency",
-          name: "Unknown currency",
-          status: "enabled",
-          price: { amountMinor: 100, currencyCode: "GHOST" },
-          billingPeriod: "monthly",
-          icon: { mode: "none" },
-          createdOn: "2026-06-01",
-          updatedOn: "2026-06-01",
-        },
+        sub({ id: "duplicate", name: "First" }),
+        sub({ id: "duplicate", name: "Second" }),
+        sub({ id: "negative", price: { amountMinor: -1, currencyCode: "USD" } }),
+        sub({ id: "unknown-currency", price: { amountMinor: 100, currencyCode: "GHOST" } }),
       ],
     });
 

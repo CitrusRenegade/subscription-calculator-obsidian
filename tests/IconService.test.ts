@@ -2,19 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultData } from "../src/data/defaultData";
 import { IconService } from "../src/icons/IconService";
 import type { SubscriptionItem } from "../src/types";
+import { sub } from "./helpers/subscriptionFactory";
 
 function subscription(id: string): SubscriptionItem {
-  return {
+  return sub({
     id,
-    name: id,
-    status: "enabled",
-    price: { amountMinor: 1000, currencyCode: "USD" },
-    billingPeriod: "monthly",
     serviceUrl: "https://example.com",
     icon: { mode: "auto", cacheKey: "google-s2:example.com" },
     createdOn: "2026-08-23",
     updatedOn: "2026-08-23",
-  };
+  });
 }
 
 describe("IconService", () => {

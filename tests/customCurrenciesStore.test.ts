@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { createDefaultData } from "../src/data/defaultData";
-import { disposeStores, storeFixture } from "./helpers/storeFixture";
+import { storeTest } from "./helpers/storeFixture";
+import { sub } from "./helpers/subscriptionFactory";
 import type { CurrencyMeta, PluginData, SubscriptionItem } from "../src/types";
 
 const customCurrency: CurrencyMeta = {
@@ -12,33 +13,25 @@ const customCurrency: CurrencyMeta = {
   source: "custom",
 };
 
-const stores: SubscriptionStore[] = [];
+const { fixture } = storeTest();
 
 function createSubscription(currencyCode: string): SubscriptionItem {
-  return {
+  return sub({
     id: "item-1",
     name: "Token Service",
-    status: "enabled",
     price: { amountMinor: 1999, currencyCode },
     startDate: "2026-06-16",
-    billingPeriod: "monthly",
-    icon: { mode: "none" },
-    createdOn: "2026-06-16",
-    updatedOn: "2026-06-16",
-  };
+  });
 }
 
 function createStore(
   data: PluginData,
   saveData: () => Promise<void> = async () => undefined
 ): SubscriptionStore {
-  const { store } = storeFixture(data, saveData);
-  stores.push(store);
-  return store;
+  return fixture(data, saveData).store;
 }
 
 describe("custom currency store rules", () => {
-  afterEach(() => disposeStores(stores));
   it("adds custom currencies with stable internal codes", async () => {
     const data = createDefaultData();
     const store = createStore(data);

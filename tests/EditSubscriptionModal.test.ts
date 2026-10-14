@@ -2,12 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App as ObsidianApp } from "obsidian";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
-import type { SubscriptionItem } from "../src/types";
 import { BuiltinCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { EditSubscriptionModal } from "../src/ui/EditSubscriptionModal";
-import { App, Notice, changeInput, changeSelect, findButton, findSetting, installObsidianDomHelpers, resetObsidianDom } from "./helpers/obsidianDom";
+import { App, Notice, changeInput, changeSelect, expectRowVisible, findButton, findSetting, installObsidianDomHelpers, resetObsidianDom } from "./helpers/obsidianDom";
+import { sub } from "./helpers/subscriptionFactory";
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
-const item: SubscriptionItem = { id: "spotify", name: "Spotify", status: "enabled", price: { amountMinor: 999, currencyCode: "USD" }, billingPeriod: "monthly", icon: { mode: "auto" }, createdOn: "2026-07-19", updatedOn: "2026-07-19" };
+const item = sub({ id: "spotify", name: "Spotify", price: { amountMinor: 999, currencyCode: "USD" }, icon: { mode: "auto" }, createdOn: "2026-07-19", updatedOn: "2026-07-19" });
 function openModal(store: Partial<SubscriptionStore>, app = new App()) {
   const modal = new EditSubscriptionModal(app as unknown as ObsidianApp, store as SubscriptionStore, new BuiltinCurrencyRegistry(), item);
   modal.open(); return modal;
@@ -33,14 +33,12 @@ describe("EditSubscriptionModal", () => {
     const modal = openModal({});
     const mode = findSetting(modal.contentEl, "Icon mode").dropdowns[0].selectEl;
     const emoji = findSetting(modal.contentEl, "Emoji").settingEl;
-    expect(emoji.hidden).toBe(true);
+    expectRowVisible(emoji, false);
     mode.focus(); changeSelect(mode, "emoji");
-    expect(emoji.hidden).toBe(false);
-    expect(emoji.style.display).not.toBe("none");
+    expectRowVisible(emoji, true);
     expect(document.activeElement).toBe(mode);
     changeSelect(mode, "none");
-    expect(emoji.hidden).toBe(true);
-    expect(emoji.style.display).toBe("none");
+    expectRowVisible(emoji, false);
     expect(document.activeElement).toBe(mode);
   });
   it("Open URL uses the modal owner window and unsaved input without saving", () => {

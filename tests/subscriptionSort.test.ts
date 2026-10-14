@@ -1,25 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { SubscriptionViewItem } from "../src/types";
 import { getSortStateFromSettings, sortSubscriptions } from "../src/ui/subscriptionSort";
+import { viewItem } from "./helpers/subscriptionFactory";
 
 function item(
   name: string,
   effectiveStatus: "enabled" | "disabled",
   startDate: string | null = "2026-06-20"
 ): SubscriptionViewItem {
-  return {
-    id: name,
-    name,
+  return viewItem(name, {
     status: effectiveStatus,
     effectiveStatus,
-    inDisableGracePeriod: false,
-    price: { amountMinor: 100, currencyCode: "USD" },
     startDate: startDate ?? undefined,
-    billingPeriod: "monthly",
-    icon: { mode: "none" },
-    createdOn: "2026-06-20",
-    updatedOn: "2026-06-20",
-  };
+  });
 }
 
 describe("sortSubscriptions", () => {

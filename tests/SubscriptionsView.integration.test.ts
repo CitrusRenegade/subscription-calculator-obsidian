@@ -7,12 +7,13 @@ import { IconService } from "../src/icons/IconService";
 import type { PluginData } from "../src/types";
 import { App, WorkspaceLeaf, resetObsidianDom } from "./helpers/obsidianDom";
 import { deferred } from "./helpers/deferred";
+import { sub } from "./helpers/subscriptionFactory";
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
 import { SubscriptionsView } from "../src/ui/SubscriptionsView";
 
 function setup(save: (data: PluginData) => Promise<void>) {
   const data = createDefaultData();
-  data.subscriptions = ["A", "B"].map(name => ({ id: name, name, status: "enabled", price: { amountMinor: 1000, currencyCode: "USD" }, billingPeriod: "monthly", icon: { mode: "none" }, startDate: "2026-10-05", createdOn: "2026-01-01", updatedOn: "2026-01-01" }));
+  data.subscriptions = ["A", "B"].map(name => sub({ id: name, startDate: "2026-10-05" }));
   const registry = new DataBackedCurrencyRegistry(() => data.settings.defaultCurrency, () => data.customCurrencies);
   const icons = new IconService(data, () => data.settings.faviconProvider);
   const saveData = vi.fn(() => save(data));

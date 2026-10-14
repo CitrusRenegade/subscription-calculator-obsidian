@@ -1,33 +1,24 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBackup } from "../src/data/backup";
 import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../src/constants";
 import { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { createDefaultData } from "../src/data/defaultData";
 import type { Clock } from "../src/date/Clock";
 import type { PluginData } from "../src/types";
-import { disposeStores, ownStoreJob, storeFixture } from "./helpers/storeFixture";
-import { deferred } from "./helpers/deferred";
+import { ownStoreJob, saveGate, storeTest } from "./helpers/storeFixture";
+import { stubWindowTimers } from "./helpers/timers";
 
-const stores: SubscriptionStore[] = [];
-const pendingReleases: Array<() => void> = [];
-const jobs: Promise<unknown>[] = [];
+const { pendingReleases, jobs, fixture } = storeTest();
 
 function createStore(
   data: PluginData,
   saveData: () => Promise<void> = async () => undefined,
   clock: Clock = { now: () => new Date("2026-06-27T12:00:00Z") }
 ): SubscriptionStore {
-  const { store } = storeFixture(data, saveData, clock);
-  stores.push(store);
-  return store;
+  return fixture(data, saveData, clock).store;
 }
 
 describe("subscription store", () => {
-  afterEach(async () => {
-    try { await disposeStores(stores, pendingReleases, jobs); }
-    finally { vi.unstubAllGlobals(); vi.restoreAllMocks(); }
-  });
-
   it("can create disabled subscriptions that are excluded from totals", async () => {
     const data = createDefaultData();
     const store = createStore(data);
@@ -102,19 +93,8 @@ describe("subscription store", () => {
 
   it("does not roll back a later update when an earlier save fails", async () => {
     const data = createDefaultData();
-    let saveCount = 0;
-    let rejectFirstUpdate: ((reason?: unknown) => void) | undefined;
-    const firstUpdateSaveStarted = deferred<void>();
-    pendingReleases.push(() => firstUpdateSaveStarted.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      const saveGate = deferred<void>();
-      pendingReleases.push(() => saveGate.resolve());
-      rejectFirstUpdate = (reason) => saveGate.reject(reason);
-      firstUpdateSaveStarted.resolve();
-      await saveGate.promise;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Reliable service",
       priceText: "20",
@@ -125,8 +105,8 @@ describe("subscription store", () => {
 
     const firstUpdate = ownStoreJob(jobs, store.updateSubscription(id, { priceText: "30" }));
     const secondUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Renamed service" }));
-    await firstUpdateSaveStarted.promise;
-    rejectFirstUpdate?.(new Error("disk full"));
+    await saves.started;
+    saves.fail(new Error("disk full"));
 
     await expect(firstUpdate).rejects.toThrow("disk full");
     await secondUpdate;
@@ -139,19 +119,8 @@ describe("subscription store", () => {
 
   it("keeps restored data when a prior queued save fails", async () => {
     const data = createDefaultData();
-    let saveCount = 0;
-    let rejectUpdateSave: ((reason?: unknown) => void) | undefined;
-    const updateSaveStarted = deferred<void>();
-    pendingReleases.push(() => updateSaveStarted.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      const saveGate = deferred<void>();
-      pendingReleases.push(() => saveGate.resolve());
-      rejectUpdateSave = (reason) => saveGate.reject(reason);
-      updateSaveStarted.resolve();
-      await saveGate.promise;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Current service",
       priceText: "20",
@@ -161,7 +130,7 @@ describe("subscription store", () => {
     const updated = ownStoreJob(jobs, store.updateSubscription(data.subscriptions[0]?.id ?? "", {
       priceText: "30",
     }));
-    await updateSaveStarted.promise;
+    await saves.started;
 
     const replacement = createDefaultData();
     replacement.settings.defaultCurrency = "EUR";
@@ -169,7 +138,7 @@ describe("subscription store", () => {
       JSON.stringify(createBackup(replacement)),
       () => true
     ));
-    rejectUpdateSave?.(new Error("disk full"));
+    saves.fail(new Error("disk full"));
 
     await expect(updated).rejects.toThrow("disk full");
     await restored;
@@ -232,10 +201,11 @@ describe("subscription store", () => {
     expect(data.subscriptions).toEqual([]);
   });
 
-  it("keeps a pending disable when flushing it cannot be saved", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+  it.each([
+    ["keeps a pending disable when flushing", (store: SubscriptionStore, id: string) => store.flushDisableGracePeriods()],
+    ["restores a pending disable when deleting", (store: SubscriptionStore, id: string) => store.deleteSubscription(id)],
+  ])("%s it cannot be saved", async (_title, failTo) => {
+    const { setTimeout } = stubWindowTimers();
 
     const data = createDefaultData();
     let saveFails = false;
@@ -248,38 +218,11 @@ describe("subscription store", () => {
       currencyCode: "USD",
       billingPeriod: "monthly",
     });
-
-    await store.setSubscriptionEnabled(data.subscriptions[0].id, false);
-    saveFails = true;
-
-    await expect(store.flushDisableGracePeriods()).rejects.toThrow("disk full");
-
-    expect(data.subscriptions[0]?.status).toBe("enabled");
-    expect(store.getEnabledSubscriptions()).toHaveLength(0);
-    expect(setTimeout).toHaveBeenCalledTimes(2);
-  });
-
-  it("restores a pending disable when deleting it cannot be saved", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
-
-    const data = createDefaultData();
-    let saveFails = false;
-    const store = createStore(data, async () => {
-      if (saveFails) throw new Error("disk full");
-    });
-    await store.addSubscription({
-      name: "Pending delete",
-      priceText: "20",
-      currencyCode: "USD",
-      billingPeriod: "monthly",
-    });
     const id = data.subscriptions[0].id;
     await store.setSubscriptionEnabled(id, false);
     saveFails = true;
 
-    await expect(store.deleteSubscription(id)).rejects.toThrow("disk full");
+    await expect(failTo(store, id)).rejects.toThrow("disk full");
 
     expect(data.subscriptions[0]?.status).toBe("enabled");
     expect(store.getEnabledSubscriptions()).toHaveLength(0);
@@ -287,9 +230,7 @@ describe("subscription store", () => {
   });
 
   it("notifies views after restoring a pending disable from a failed delete", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    stubWindowTimers();
 
     const data = createDefaultData();
     let saveFails = false;
@@ -315,29 +256,11 @@ describe("subscription store", () => {
   });
 
   it("keeps a later enable when the grace timer fires behind a busy write queue", async () => {
-    const timerCallbacks: Array<() => void> = [];
-    const setTimeout = vi.fn((callback: () => void) => {
-      timerCallbacks.push(callback);
-      return timerCallbacks.length;
-    });
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const { timerCallbacks } = stubWindowTimers(true);
 
     const data = createDefaultData();
-    let saveCount = 0;
-    let releaseBusySave: (() => void) | undefined;
-    const busySaveStarted = deferred<void>();
-    pendingReleases.push(() => busySaveStarted.resolve());
-    const busySaveFinishedGate = deferred<void>();
-    const busySaveFinished = busySaveFinishedGate.promise;
-    releaseBusySave = () => busySaveFinishedGate.resolve();
-    pendingReleases.push(() => busySaveFinishedGate.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      busySaveStarted.resolve();
-      await busySaveFinished;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Queued enable",
       priceText: "20",
@@ -346,12 +269,12 @@ describe("subscription store", () => {
     });
     const id = data.subscriptions[0].id;
     const busyUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Still queued" }));
-    await busySaveStarted.promise;
+    await saves.started;
 
     await store.setSubscriptionEnabled(id, false);
     const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
     timerCallbacks[0]?.();
-    releaseBusySave?.();
+    saves.open();
 
     await busyUpdate;
     await enabling;
@@ -361,25 +284,15 @@ describe("subscription store", () => {
   });
 
   it("keeps the persisted enabled state when both a grace flush and queued enable fail", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    stubWindowTimers();
 
     const data = createDefaultData();
     let saveCount = 0;
-    let rejectFlushSave: ((reason?: unknown) => void) | undefined;
-    const flushSaveStarted = deferred<void>();
-    pendingReleases.push(() => flushSaveStarted.resolve());
+    const saves = saveGate(pendingReleases, 2);
     const store = createStore(data, async () => {
       saveCount += 1;
-      if (saveCount === 2) {
-        const saveGate = deferred<void>();
-        pendingReleases.push(() => saveGate.resolve());
-        rejectFlushSave = (reason) => saveGate.reject(reason);
-        flushSaveStarted.resolve();
-        await saveGate.promise;
-      }
       if (saveCount === 3) throw new Error("enable save failed");
+      await saves.save();
     });
     await store.addSubscription({
       name: "Double save failure",
@@ -391,9 +304,9 @@ describe("subscription store", () => {
     await store.setSubscriptionEnabled(id, false);
 
     const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
-    await flushSaveStarted.promise;
+    await saves.started;
     const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
-    rejectFlushSave?.(new Error("flush save failed"));
+    saves.fail(new Error("flush save failed"));
 
     await expect(flushing).rejects.toThrow("flush save failed");
     await expect(enabling).resolves.toBeUndefined();
@@ -402,25 +315,11 @@ describe("subscription store", () => {
   });
 
   it("keeps a later disable when an earlier enable is waiting behind a write", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    stubWindowTimers();
 
     const data = createDefaultData();
-    let saveCount = 0;
-    let releaseBusySave: (() => void) | undefined;
-    const busySaveStarted = deferred<void>();
-    pendingReleases.push(() => busySaveStarted.resolve());
-    const busySaveFinishedGate = deferred<void>();
-    const busySaveFinished = busySaveFinishedGate.promise;
-    releaseBusySave = () => busySaveFinishedGate.resolve();
-    pendingReleases.push(() => busySaveFinishedGate.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      busySaveStarted.resolve();
-      await busySaveFinished;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Queued disable",
       priceText: "20",
@@ -430,11 +329,11 @@ describe("subscription store", () => {
     });
     const id = data.subscriptions[0].id;
     const busyUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Still queued" }));
-    await busySaveStarted.promise;
+    await saves.started;
 
     const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
     await store.setSubscriptionEnabled(id, false);
-    releaseBusySave?.();
+    saves.open();
 
     await busyUpdate;
     await enabling;
@@ -443,25 +342,12 @@ describe("subscription store", () => {
   });
 
   it("does not retry a delayed disable after the store is disposed", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const { setTimeout } = stubWindowTimers();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const data = createDefaultData();
-    let saveCount = 0;
-    let rejectFlushSave: ((reason?: unknown) => void) | undefined;
-    const flushSaveStarted = deferred<void>();
-    pendingReleases.push(() => flushSaveStarted.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      const saveGate = deferred<void>();
-      pendingReleases.push(() => saveGate.resolve());
-      rejectFlushSave = (reason) => saveGate.reject(reason);
-      flushSaveStarted.resolve();
-      await saveGate.promise;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Dispose without retry",
       priceText: "20",
@@ -471,32 +357,19 @@ describe("subscription store", () => {
     await store.setSubscriptionEnabled(data.subscriptions[0].id, false);
 
     store.dispose();
-    await flushSaveStarted.promise;
-    rejectFlushSave?.(new Error("disk full"));
+    await saves.started;
+    saves.fail(new Error("disk full"));
     await store.readSnapshot();
 
     expect(setTimeout).toHaveBeenCalledTimes(1);
   });
 
   it("does not restore a delete grace period after disposal when saving fails", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const { setTimeout } = stubWindowTimers();
 
     const data = createDefaultData();
-    let saveCount = 0;
-    let rejectDeleteSave: ((reason?: unknown) => void) | undefined;
-    const deleteSaveStarted = deferred<void>();
-    pendingReleases.push(() => deleteSaveStarted.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      const saveGate = deferred<void>();
-      pendingReleases.push(() => saveGate.resolve());
-      rejectDeleteSave = (reason) => saveGate.reject(reason);
-      deleteSaveStarted.resolve();
-      await saveGate.promise;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Disposed delete",
       priceText: "20",
@@ -507,38 +380,20 @@ describe("subscription store", () => {
     await store.setSubscriptionEnabled(id, false);
 
     const deleting = ownStoreJob(jobs, store.deleteSubscription(id));
-    await deleteSaveStarted.promise;
+    await saves.started;
     store.dispose();
-    rejectDeleteSave?.(new Error("disk full"));
+    saves.fail(new Error("disk full"));
 
     await expect(deleting).rejects.toThrow("disk full");
     expect(setTimeout).toHaveBeenCalledTimes(1);
   });
 
   it("saves a disable queued by its timer before disposal", async () => {
-    const timerCallbacks: Array<() => void> = [];
-    const setTimeout = vi.fn((callback: () => void) => {
-      timerCallbacks.push(callback);
-      return timerCallbacks.length;
-    });
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const { timerCallbacks } = stubWindowTimers(true);
 
     const data = createDefaultData();
-    let saveCount = 0;
-    let releaseBusySave: (() => void) | undefined;
-    const busySaveStarted = deferred<void>();
-    pendingReleases.push(() => busySaveStarted.resolve());
-    const busySaveFinishedGate = deferred<void>();
-    const busySaveFinished = busySaveFinishedGate.promise;
-    releaseBusySave = () => busySaveFinishedGate.resolve();
-    pendingReleases.push(() => busySaveFinishedGate.resolve());
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      busySaveStarted.resolve();
-      await busySaveFinished;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Queued before disposal",
       priceText: "20",
@@ -547,23 +402,21 @@ describe("subscription store", () => {
     });
     const id = data.subscriptions[0].id;
     const busyUpdate = ownStoreJob(jobs, store.updateSubscription(id, { name: "Still queued" }));
-    await busySaveStarted.promise;
+    await saves.started;
     await store.setSubscriptionEnabled(id, false);
     timerCallbacks[0]?.();
     store.dispose();
-    releaseBusySave?.();
+    saves.open();
 
     await busyUpdate;
     await store.readSnapshot();
 
     expect(data.subscriptions[0]?.status).toBe("disabled");
-    expect(saveCount).toBe(3);
+    expect(saves.calls).toBe(3);
   });
 
   it("flushes a pending disable even when the store is disposed immediately", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    stubWindowTimers();
 
     const data = createDefaultData();
     const store = createStore(data);
@@ -583,23 +436,11 @@ describe("subscription store", () => {
   });
 
   it("does not restore a pending disable after a newer enable during a failed flush", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const { setTimeout } = stubWindowTimers();
 
     const data = createDefaultData();
-    const flushSaveStarted = deferred<void>();
-    let rejectFlushSave: ((reason?: unknown) => void) | undefined;
-    let saveCount = 0;
-    const store = createStore(data, async () => {
-      saveCount += 1;
-      if (saveCount !== 2) return;
-      const saveGate = deferred<void>();
-      pendingReleases.push(() => saveGate.resolve());
-      rejectFlushSave = (reason) => saveGate.reject(reason);
-      flushSaveStarted.resolve();
-      await saveGate.promise;
-    });
+    const saves = saveGate(pendingReleases, 2);
+    const store = createStore(data, saves.save);
     await store.addSubscription({
       name: "Concurrent enable",
       priceText: "20",
@@ -610,9 +451,9 @@ describe("subscription store", () => {
     await store.setSubscriptionEnabled(id, false);
 
     const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
-    await flushSaveStarted.promise;
+    await saves.started;
     const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
-    rejectFlushSave?.(new Error("disk full"));
+    saves.fail(new Error("disk full"));
 
     await expect(flushing).rejects.toThrow("disk full");
     await enabling;
@@ -622,23 +463,15 @@ describe("subscription store", () => {
   });
 
   it("rolls a queued enable back when it cannot be saved after a flush", async () => {
-    const setTimeout = vi.fn(() => 1);
-    const clearTimeout = vi.fn();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    stubWindowTimers();
 
     const data = createDefaultData();
     let saveCount = 0;
-    const flushSaveStarted = deferred<void>();
-    const flushSaveFinished = deferred<void>();
-    pendingReleases.push(() => flushSaveFinished.resolve());
+    const saves = saveGate(pendingReleases, 2);
     const store = createStore(data, async () => {
       saveCount += 1;
-      if (saveCount === 2) {
-        flushSaveStarted.resolve();
-        await flushSaveFinished.promise;
-        return;
-      }
       if (saveCount === 3) throw new Error("enable save failed");
+      await saves.save();
     });
     await store.addSubscription({
       name: "Pending disable",
@@ -650,9 +483,9 @@ describe("subscription store", () => {
     await store.setSubscriptionEnabled(id, false);
 
     const flushing = ownStoreJob(jobs, store.flushDisableGracePeriods());
-    await flushSaveStarted.promise;
+    await saves.started;
     const enabling = ownStoreJob(jobs, store.setSubscriptionEnabled(id, true));
-    flushSaveFinished.resolve();
+    saves.open();
 
     await flushing;
     await expect(enabling).rejects.toThrow("enable save failed");

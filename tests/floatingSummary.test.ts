@@ -7,6 +7,22 @@ import {
   shouldShowFloatingSummary,
 } from "../src/ui/floatingSummary";
 
+/** Default measurable viewport; overrides replace the shared geometry fields. */
+function show(
+  settings: Partial<Parameters<typeof shouldShowFloatingSummary>[0]> &
+    Pick<Parameters<typeof shouldShowFloatingSummary>[0], "position" | "sentinelTop" | "sentinelBottom">
+): boolean {
+  return shouldShowFloatingSummary({ viewTop: 100, viewBottom: 700, sentinelHeight: 30, ...settings });
+}
+
+/** The bottom sheet spanning the view width; only the status bar rectangle varies. */
+function inset(statusBar: { left: number; right: number; top: number; bottom: number }): number {
+  return getBottomSheetStatusBarInset({
+    sheet: { left: 0, right: 500, top: 580, bottom: 700 },
+    statusBar,
+  });
+}
+
 describe("getFloatingSummaryPosition", () => {
   it("OBS-36 keeps the original top overlay as the default position", () => {
     expect(getFloatingSummaryPosition(false)).toBe("top");
@@ -58,92 +74,29 @@ describe("getFloatingSummaryPresentation", () => {
 
 describe("shouldShowFloatingSummary", () => {
   it("OBS-36 shows the default top overlay after the static summary scrolls above the view", () => {
-    expect(
-      shouldShowFloatingSummary({
-        position: "top",
-        viewTop: 100,
-        viewBottom: 700,
-        sentinelTop: 70,
-        sentinelBottom: 100,
-        sentinelHeight: 30,
-      })
-    ).toBe(true);
-    expect(
-      shouldShowFloatingSummary({
-        position: "top",
-        viewTop: 100,
-        viewBottom: 700,
-        sentinelTop: 71,
-        sentinelBottom: 101,
-        sentinelHeight: 30,
-      })
-    ).toBe(false);
+    expect(show({ position: "top", sentinelTop: 70, sentinelBottom: 100 })).toBe(true);
+    expect(show({ position: "top", sentinelTop: 71, sentinelBottom: 101 })).toBe(false);
   });
 
   it("OBS-36 hides the bottom sheet when annual values enter the viewport", () => {
-    expect(
-      shouldShowFloatingSummary({
-        position: "bottom",
-        viewTop: 100,
-        viewBottom: 700,
-        sentinelTop: 701,
-        sentinelBottom: 731,
-        sentinelHeight: 30,
-      })
-    ).toBe(true);
-    expect(
-      shouldShowFloatingSummary({
-        position: "bottom",
-        viewTop: 100,
-        viewBottom: 700,
-        sentinelTop: 700,
-        sentinelBottom: 730,
-        sentinelHeight: 30,
-      })
-    ).toBe(false);
+    expect(show({ position: "bottom", sentinelTop: 701, sentinelBottom: 731 })).toBe(true);
+    expect(show({ position: "bottom", sentinelTop: 700, sentinelBottom: 730 })).toBe(false);
   });
 
   it("OBS-36.FLOATING_SUMMARY.3 keeps the sheet hidden until its title and view are measurable", () => {
-    expect(
-      shouldShowFloatingSummary({
-        position: "bottom",
-        viewTop: null,
-        viewBottom: 0,
-        sentinelTop: 0,
-        sentinelBottom: 0,
-        sentinelHeight: 0,
-      })
-    ).toBe(false);
-    expect(
-      shouldShowFloatingSummary({
-        position: "top",
-        viewTop: 0,
-        viewBottom: 0,
-        sentinelTop: 70,
-        sentinelBottom: 100,
-        sentinelHeight: 30,
-      })
-    ).toBe(false);
+    expect(show({
+      position: "bottom", viewTop: null, viewBottom: 0,
+      sentinelTop: 0, sentinelBottom: 0, sentinelHeight: 0,
+    })).toBe(false);
+    expect(show({
+      position: "top", viewTop: 0, viewBottom: 0,
+      sentinelTop: 70, sentinelBottom: 100,
+    })).toBe(false);
   });
 
   it("OBS-36.FLOATING_SUMMARY.2 insets content by vertical status-bar overlap only when it overlaps horizontally", () => {
-    expect(
-      getBottomSheetStatusBarInset({
-        sheet: { left: 0, right: 500, top: 580, bottom: 700 },
-        statusBar: { left: 0, right: 500, top: 670, bottom: 710 },
-      })
-    ).toBe(30);
-    expect(
-      getBottomSheetStatusBarInset({
-        sheet: { left: 0, right: 500, top: 580, bottom: 700 },
-        statusBar: { left: 600, right: 800, top: 670, bottom: 710 },
-      })
-    ).toBe(0);
-    expect(
-      getBottomSheetStatusBarInset({
-        sheet: { left: 0, right: 500, top: 580, bottom: 700 },
-        statusBar: { left: 0, right: 500, top: 710, bottom: 740 },
-      })
-    ).toBe(0);
+    expect(inset({ left: 0, right: 500, top: 670, bottom: 710 })).toBe(30);
+    expect(inset({ left: 600, right: 800, top: 670, bottom: 710 })).toBe(0);
+    expect(inset({ left: 0, right: 500, top: 710, bottom: 740 })).toBe(0);
   });
 });

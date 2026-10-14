@@ -16,6 +16,7 @@ import { formatMoney, moneyToInputValue } from "../src/money/formatMoney";
 import { parseMoneyInput } from "../src/money/parseMoneyInput";
 import { calculateTotalsByCurrency, getPerYearMinor, moneyFromMinor } from "../src/money/totals";
 import type { CurrencyMeta, SubscriptionItem } from "../src/types";
+import { sub } from "./helpers/subscriptionFactory";
 
 const registry = new BuiltinCurrencyRegistry();
 const customCurrency: CurrencyMeta = {
@@ -48,18 +49,7 @@ function subscription(
   billingPeriod: SubscriptionItem["billingPeriod"],
   customBillingPeriodDays?: number
 ): SubscriptionItem {
-  return {
-    id: name,
-    name,
-    status: "enabled",
-    price: { amountMinor, currencyCode },
-    startDate: "2026-06-16",
-    billingPeriod,
-    customBillingPeriodDays,
-    icon: { mode: "none" },
-    createdOn: "2026-06-16",
-    updatedOn: "2026-06-16",
-  };
+  return sub({ id: name, price: { amountMinor, currencyCode }, billingPeriod, customBillingPeriodDays });
 }
 
 describe("money helpers", () => {
@@ -106,51 +96,34 @@ describe("money helpers", () => {
     expect(getCurrencySelectLabel({ ...customCurrency, amountMarker: "TOK" })).toBe("TOK");
   });
 
-  it("parses input to minor units by currency scale", () => {
-    expect(parseMoneyInput("19.99", "USD", registry)).toEqual({
-      amountMinor: 1999,
-      currencyCode: "USD",
+  it.each([
+    ["19.99", "USD", registry, 1999],
+    ["1200", "JPY", registry, 1200],
+    ["1200.00", "JPY", registry, 1200],
+    ["19.99", "CUSTOM_AB12CD", customRegistry, 1999],
+    ["0.00000042", "CUSTOM_HIGH", highPrecisionCustomRegistry, 42],
+  ] as const)("parses %s in %s to minor units", (input, code, currencyRegistry, minor) => {
+    expect(parseMoneyInput(input, code, currencyRegistry)).toEqual({
+      amountMinor: minor,
+      currencyCode: code,
     });
-    expect(parseMoneyInput("1200", "JPY", registry)).toEqual({
-      amountMinor: 1200,
-      currencyCode: "JPY",
-    });
-    expect(parseMoneyInput("1200.00", "JPY", registry)).toEqual({
-      amountMinor: 1200,
-      currencyCode: "JPY",
-    });
-    expect(parseMoneyInput("1.23", "JPY", registry)).toBeNull();
   });
 
-  it("parses custom currency input by custom scale", () => {
-    expect(parseMoneyInput("19.99", "CUSTOM_AB12CD", customRegistry)).toEqual({
-      amountMinor: 1999,
-      currencyCode: "CUSTOM_AB12CD",
-    });
-    expect(parseMoneyInput("19.999", "CUSTOM_AB12CD", customRegistry)).toBeNull();
+  it.each([
+    ["1.23", "JPY", registry],
+    ["19.999", "CUSTOM_AB12CD", customRegistry],
+    ["0.000000421", "CUSTOM_HIGH", highPrecisionCustomRegistry],
+  ] as const)("rejects %s in %s beyond its scale", (input, code, currencyRegistry) => {
+    expect(parseMoneyInput(input, code, currencyRegistry)).toBeNull();
   });
 
-  it("keeps legacy high-precision custom currencies parseable", () => {
-    expect(parseMoneyInput("0.00000042", "CUSTOM_HIGH", highPrecisionCustomRegistry)).toEqual({
-      amountMinor: 42,
-      currencyCode: "CUSTOM_HIGH",
-    });
-    expect(parseMoneyInput("0.000000421", "CUSTOM_HIGH", highPrecisionCustomRegistry)).toBeNull();
-  });
-
-  it("formats minor-unit money for display", () => {
-    expect(formatMoney(moneyFromMinor(1999, "USD"), registry)).toMatch(
-      /^20 \$$/
-    );
-    expect(formatMoney(moneyFromMinor(3878000, "USD"), registry)).toMatch(
-      /^38\u00A0780 \$$/
-    );
-    expect(formatMoney(moneyFromMinor(1994, "USD"), registry, 1)).toMatch(
-      /^19[.,]9 \$$/
-    );
-    expect(formatMoney(moneyFromMinor(2000, "USD"), registry, 1)).toMatch(
-      /^20[.,]0 \$$/
-    );
+  it.each([
+    [1999, undefined, /^20 \$$/],
+    [3878000, undefined, /^38\u00A0780 \$$/],
+    [1994, 1, /^19[.,]9 \$$/],
+    [2000, 1, /^20[.,]0 \$$/],
+  ] as const)("formats minor-unit money for display: %j", (amountMinor, precision, pattern) => {
+    expect(formatMoney(moneyFromMinor(amountMinor, "USD"), registry, precision)).toMatch(pattern);
   });
 
   it("formats custom currencies with their amount marker", () => {

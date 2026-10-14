@@ -6,6 +6,27 @@ import {
   restoreBackupData,
 } from "../src/data/backup";
 import type { PluginData } from "../src/types";
+import { withProtoKey } from "./helpers/protoKey";
+
+const EXPORTED_AT = "2026-07-19T10:00:00.000Z";
+
+/** Round-trip a backup (possibly mutated) through its portable JSON text form. */
+function backupText(backup = createBackup(createData())): string {
+  return JSON.stringify(backup);
+}
+
+type RestoreActions = Parameters<typeof restoreBackupData>[2];
+
+/** Confirming restore actions; tests override only the members whose behavior matters. */
+function restoreActions(overrides: Partial<RestoreActions> = {}): RestoreActions {
+  return {
+    confirm: () => true,
+    flush: async () => undefined,
+    save: async () => undefined,
+    notify: () => undefined,
+    ...overrides,
+  };
+}
 
 function createData(): PluginData {
   return {
@@ -51,12 +72,12 @@ function createData(): PluginData {
 
 describe("subscription backup", () => {
   it("exports a portable envelope without favicon cache data", () => {
-    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    const backup = createBackup(createData(), EXPORTED_AT);
 
     expect(backup).toMatchObject({
       format: "subscription-calculator-backup",
       version: 1,
-      exportedAt: "2026-07-19T10:00:00.000Z",
+      exportedAt: EXPORTED_AT,
       payload: {
         settings: { defaultCurrency: "USD" },
         customCurrencies: [{ code: "TOK" }],
@@ -67,11 +88,11 @@ describe("subscription backup", () => {
   });
 
   it("migrates valid data in memory and reports skipped invalid records", () => {
-    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    const backup = createBackup(createData(), EXPORTED_AT);
     backup.payload.subscriptions.push({ id: "invalid" } as never);
     backup.payload.customCurrencies.push({ code: "BAD" } as never);
 
-    const result = parseBackup(JSON.stringify(backup));
+    const result = parseBackup(backupText(backup));
 
     expect(result.data.subscriptions.map((item) => item.id)).toEqual(["netflix"]);
     expect(result.data.iconCache).toEqual({});
@@ -82,7 +103,7 @@ describe("subscription backup", () => {
   });
 
   it("skips duplicate ids, negative prices, and unknown currencies", () => {
-    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    const backup = createBackup(createData(), EXPORTED_AT);
     const original = backup.payload.subscriptions[0];
     backup.payload.subscriptions.push(
       { ...original, price: { ...original.price, amountMinor: 2000 } },
@@ -98,36 +119,36 @@ describe("subscription backup", () => {
       }
     );
 
-    const result = parseBackup(JSON.stringify(backup));
+    const result = parseBackup(backupText(backup));
 
     expect(result.data.subscriptions.map((item) => item.id)).toEqual(["netflix"]);
     expect(result.report.subscriptions).toEqual({ imported: 1, skipped: 3 });
   });
 
   it("keeps a subscription that uses a custom currency from the same backup", () => {
-    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    const backup = createBackup(createData(), EXPORTED_AT);
     backup.payload.subscriptions[0].price.currencyCode = "TOK";
 
-    const result = parseBackup(JSON.stringify(backup));
+    const result = parseBackup(backupText(backup));
 
     expect(result.data.subscriptions[0]?.price.currencyCode).toBe("TOK");
     expect(result.report.subscriptions).toEqual({ imported: 1, skipped: 0 });
   });
 
   it("repairs an invalid default currency while importing a backup", () => {
-    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    const backup = createBackup(createData(), EXPORTED_AT);
     backup.payload.settings.defaultCurrency = "GHOST";
 
-    const result = parseBackup(JSON.stringify(backup));
+    const result = parseBackup(backupText(backup));
 
     expect(result.data.settings.defaultCurrency).toBe("USD");
   });
 
   it("rejects a future backup version before producing imported data", () => {
-    const backup = createBackup(createData(), "2026-07-19T10:00:00.000Z");
+    const backup = createBackup(createData(), EXPORTED_AT);
     backup.version = 2;
 
-    expect(() => parseBackup(JSON.stringify(backup))).toThrow(
+    expect(() => parseBackup(backupText(backup))).toThrow(
       "Backup version 2 is newer than this plugin supports."
     );
   });
@@ -139,7 +160,7 @@ describe("subscription backup", () => {
         JSON.stringify({
           format: "other-plugin-backup",
           version: 1,
-          exportedAt: "2026-07-19T10:00:00.000Z",
+          exportedAt: EXPORTED_AT,
           payload: { settings: {}, subscriptions: [], customCurrencies: [] },
         })
       )
@@ -149,7 +170,7 @@ describe("subscription backup", () => {
   it("replaces data in place and clears the derived favicon cache", () => {
     const current = createData();
     const rootReference = current;
-    const replacement = parseBackup(JSON.stringify(createBackup(createData()))).data;
+    const replacement = parseBackup(backupText()).data;
     replacement.settings.defaultCurrency = "EUR";
 
     replacePluginData(current, replacement);
@@ -191,7 +212,7 @@ describe("subscription backup", () => {
 
     const report = await restoreBackupData(
       current,
-      JSON.stringify(createBackup(replacement)),
+      backupText(createBackup(replacement)),
       actions
     );
 
@@ -203,7 +224,7 @@ describe("subscription backup", () => {
   it("does not mutate current data when parsing fails or confirmation is declined", async () => {
     const current = createData();
     const before = JSON.stringify(current);
-    const actions = {
+    const actions = restoreActions({
       confirm: () => false,
       flush: async () => {
         throw new Error("flush should not run");
@@ -214,7 +235,7 @@ describe("subscription backup", () => {
       notify: () => {
         throw new Error("notify should not run");
       },
-    };
+    });
 
     await expect(restoreBackupData(current, "{", actions)).rejects.toThrow(
       "Backup file is not valid JSON."
@@ -227,7 +248,7 @@ describe("subscription backup", () => {
         JSON.stringify({
           format: "other-plugin-backup",
           version: 1,
-          exportedAt: "2026-07-19T10:00:00.000Z",
+          exportedAt: EXPORTED_AT,
           payload: { settings: {}, subscriptions: [], customCurrencies: [] },
         }),
         actions
@@ -236,7 +257,7 @@ describe("subscription backup", () => {
     expect(JSON.stringify(current)).toBe(before);
 
     await expect(
-      restoreBackupData(current, JSON.stringify(createBackup(createData())), actions)
+      restoreBackupData(current, backupText(), actions)
     ).resolves.toBeNull();
     expect(JSON.stringify(current)).toBe(before);
   });
@@ -247,7 +268,7 @@ describe("subscription backup", () => {
     const order: string[] = [];
 
     await expect(
-      restoreBackupData(current, JSON.stringify(createBackup(createData())), {
+      restoreBackupData(current, backupText(), {
         confirm: () => true,
         flush: async () => {
           order.push("flush");
@@ -276,7 +297,7 @@ describe("subscription backup", () => {
     const order: string[] = [];
 
     await expect(
-      restoreBackupData(current, JSON.stringify(createBackup(replacement)), {
+      restoreBackupData(current, backupText(createBackup(replacement)), {
         confirm: () => true,
         flush: async () => {
           order.push("flush");
@@ -299,25 +320,17 @@ describe("subscription backup", () => {
 
   it("preserves special cache keys when a failed restore rolls data back", async () => {
     const current = createData();
-    Object.defineProperty(current.iconCache, "__proto__", {
-      value: {
-        ...current.iconCache["google-s2:netflix.com"],
-        cacheKey: "__proto__",
-      },
-      enumerable: true,
-      configurable: true,
-      writable: true,
+    withProtoKey(current.iconCache, {
+      ...current.iconCache["google-s2:netflix.com"],
+      cacheKey: "__proto__",
     });
 
     await expect(
-      restoreBackupData(current, JSON.stringify(createBackup(createData())), {
-        confirm: () => true,
-        flush: async () => undefined,
+      restoreBackupData(current, backupText(), restoreActions({
         save: async () => {
           throw new Error("disk full");
         },
-        notify: () => undefined,
-      })
+      }))
     ).rejects.toThrow("disk full");
 
     expect(Object.keys(current.iconCache)).toContain("__proto__");

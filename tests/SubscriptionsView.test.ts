@@ -5,13 +5,14 @@ import type { IconService } from "../src/icons/IconService";
 import { createDefaultData } from "../src/data/defaultData";
 import { DataBackedCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { App, WorkspaceLeaf, resetObsidianDom } from "./helpers/obsidianDom";
+import { viewItem } from "./helpers/subscriptionFactory";
 
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
 import { SubscriptionsView } from "../src/ui/SubscriptionsView";
 
 function setup(app = new App()) {
   const data = createDefaultData();
-  const items = ["A", "B"].map((name) => ({ id: name, name, status: "enabled" as const, effectiveStatus: "enabled" as const, inDisableGracePeriod: false, price: { amountMinor: 1000, currencyCode: "USD" }, billingPeriod: "monthly" as const, icon: { mode: "none" as const }, startDate: "2026-10-05", createdOn: "2026-01-01", updatedOn: "2026-01-01" }));
+  const items = ["A", "B"].map((name) => viewItem(name, { startDate: "2026-10-05" }));
   const callbacks = new Set<() => void>();
   const store = {
     subscribe: (callback: () => void) => { callbacks.add(callback); return () => callbacks.delete(callback); },

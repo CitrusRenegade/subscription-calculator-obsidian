@@ -1,4 +1,6 @@
 // A thin Obsidian UI boundary over jsdom. No layout or native host behavior is emulated.
+import { expect } from "vitest";
+
 interface ElementOptions { cls?: string | string[]; text?: string; attr?: Record<string, string>; }
 function appendElement(parent: Node, tag: string, options: ElementOptions = {}): HTMLElement {
   const range = parent.ownerDocument!.createRange();
@@ -170,6 +172,11 @@ export function findButton(container: HTMLElement, text: string): HTMLButtonElem
   const button = Array.from(container.querySelectorAll("button")).find(value => value.textContent === text);
   if (!button) throw new Error(`Button not found: ${text}`);
   return button;
+}
+/** Conditional rows toggle both the hidden flag and inline display; shown rows reset display to "". */
+export function expectRowVisible(row: HTMLElement, visible: boolean): void {
+  expect(row.hidden).toBe(!visible);
+  expect(row.style.display).toBe(visible ? "" : "none");
 }
 
 export async function requestUrl(): Promise<never> { throw new Error("Unexpected network request in DOM interaction test"); }
