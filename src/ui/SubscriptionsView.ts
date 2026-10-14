@@ -276,11 +276,11 @@ export class SubscriptionsView extends ItemView {
     const focusKey = active.getAttribute("data-focus-key");
     const controls = card ? Array.from(card.querySelectorAll("button, input, select")) : [];
     const index = controls.indexOf(active);
-    const draft = active.matches("input") && !(active as HTMLInputElement).hidden
-      ? (active as HTMLInputElement).value : null;
+    const activeInput = active.tagName === "INPUT" ? (active as HTMLInputElement) : null;
+    const draft = activeInput && !activeInput.hidden ? activeInput.value : null;
     const isPriceEditor = active.matches(".subscription-calculator-money-input");
-    const selectionStart = draft === null ? null : (active as HTMLInputElement).selectionStart;
-    const selectionEnd = draft === null ? null : (active as HTMLInputElement).selectionEnd;
+    const selectionStart = draft === null ? null : activeInput?.selectionStart ?? null;
+    const selectionEnd = draft === null ? null : activeInput?.selectionEnd ?? null;
     return () => {
       const nextCard = Array.from(container.querySelectorAll<HTMLElement>("[data-subscription-id]"))
         .find((element) => element.getAttribute("data-subscription-id") === subscriptionId);
