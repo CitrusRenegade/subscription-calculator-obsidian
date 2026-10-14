@@ -107,3 +107,50 @@ export interface SubscriptionViewItem extends SubscriptionItem {
   effectiveStatus: SubscriptionStatus;
   inDisableGracePeriod: boolean;
 }
+
+/** Strict `new` command shared by the CLI adapter and dry-run preview. */
+export interface SubscriptionCreateCommand {
+  name: string;
+  priceText: string;
+  currencyCode?: string;
+  billingPeriod?: BillingPeriod;
+  customBillingPeriodDays?: number;
+  startDate?: DateOnly;
+  serviceUrl?: string;
+  status?: SubscriptionStatus;
+}
+
+/** Strict `set` command; omitted fields are preserved, `clear*` switches remove optional ones. */
+export interface SubscriptionSetCommand {
+  name?: string;
+  priceText?: string;
+  currencyCode?: string;
+  billingPeriod?: BillingPeriod;
+  customBillingPeriodDays?: number;
+  startDate?: DateOnly;
+  clearStartDate?: boolean;
+  serviceUrl?: string;
+  clearServiceUrl?: boolean;
+  status?: SubscriptionStatus;
+}
+
+export interface SubscriptionCommandOptions {
+  /** Validate and preview without allocating ids or touching any persisted/runtime state. */
+  dryRun?: boolean;
+}
+
+export interface SubscriptionCommandResult {
+  /** Record id; null for a create preview, which allocates no id. */
+  id: string | null;
+  /** Detached snapshot taken at the transaction return point. */
+  item: SubscriptionItem;
+  currencyScale: number;
+  currencyArchived: boolean;
+  persistedStatus: SubscriptionStatus;
+  effectiveStatus: SubscriptionStatus;
+  /** True when a runtime status intent still differs from the persisted status. */
+  statusPending: boolean;
+  /** Persisted or observable runtime intent change; false for semantic no-ops. */
+  changed: boolean;
+  dryRun: boolean;
+}

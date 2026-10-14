@@ -39,6 +39,8 @@ export interface ParsedBackup {
 export interface BackupRestoreActions {
   confirm: (report: BackupImportReport) => boolean;
   flush: () => Promise<void>;
+  /** Runs after the flush has committed and before the dataset is replaced. */
+  afterFlush?: () => void;
   save: () => Promise<void>;
   notify: () => void;
 }
@@ -193,6 +195,8 @@ export async function restoreBackupData(
     actions.notify();
     throw error;
   }
+
+  actions.afterFlush?.();
 
   const previous = clonePluginData(target);
   replacePluginData(target, parsed.data);

@@ -1,17 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { exportBackup, querySubscriptions } from "../src/cli/subscriptions";
 import { parseBackup } from "../src/data/backup";
-import type { SubscriptionStore } from "../src/data/SubscriptionStore";
-import { disposeStores, ownStoreJob, storeFixture } from "./helpers/storeFixture";
-import { deferred } from "./helpers/deferred";
+import { manualGate, ownStoreJob, storeTest } from "./helpers/storeFixture";
+import { useRecordedTimers } from "./helpers/timers";
 
-const stores: SubscriptionStore[] = [];
-const pendingReleases: Array<() => void> = [];
-const jobs: Promise<unknown>[] = [];
+const { pendingReleases, jobs, fixture } = storeTest();
 
 function setup(save: () => Promise<void> = async () => undefined) {
-  const { data, registry, store } = storeFixture(undefined, save);
-  stores.push(store);
+  const { data, registry, store } = fixture(undefined, save);
   const add = (name: string, status: "enabled" | "disabled" = "enabled") => store.addSubscription({
     name, status, priceText: "12.34", currencyCode: "USD", billingPeriod: "monthly", icon: { mode: "none" },
   });
@@ -19,10 +15,6 @@ function setup(save: () => Promise<void> = async () => undefined) {
 }
 
 describe("subscription CLI", () => {
-  afterEach(async () => {
-    try { await disposeStores(stores, pendingReleases, jobs); }
-    finally { vi.useRealTimers(); vi.unstubAllGlobals(); }
-  });
 
   it("lists only names and full IDs, including hidden disabled subscriptions", async () => {
     const { data, registry, store, add } = setup();
@@ -64,7 +56,7 @@ describe("subscription CLI", () => {
     expect(await querySubscriptions("get", { name: "x", id: "y" }, store, registry)).toBe("Error: Specify either id or name.");
     expect(await querySubscriptions("get", { id: "missing" }, store, registry)).toBe("Error: Subscription not found.");
     expect(await querySubscriptions("list", { query: "Netflix" }, store, registry)).toBe("Error: Unknown parameter: query.");
-    expect(await querySubscriptions("list", { format: "json" }, store, registry)).toBe("Error: Unknown parameter: format.");
+    expect(JSON.parse(await querySubscriptions("list", { format: "json" }, store, registry))).toMatchObject({ ok: true, data: { subscriptions: [] } });
     expect(await querySubscriptions("list", { status: "maybe" }, store, registry)).toBe("Error: status must be enabled or disabled.");
     expect(await querySubscriptions("list", { currency: "invalid" }, store, registry)).toBe("Error: Unknown currency.");
   });
@@ -99,7 +91,7 @@ describe("subscription CLI", () => {
   });
 
   it("keeps pending-disable details distinct from backup status without consuming undo", async () => {
-    vi.useFakeTimers(); vi.stubGlobal("window", { setTimeout, clearTimeout });
+    useRecordedTimers();
     const save = vi.fn(async () => undefined);
     const { data, registry, store, add } = setup(save);
     await add("Привет 😀"); const id = data.subscriptions[0].id;
@@ -113,24 +105,17 @@ describe("subscription CLI", () => {
   });
 
   it("keeps an expired disable effective while its save waits in the queue", async () => {
-    vi.useFakeTimers(); vi.stubGlobal("window", { setTimeout, clearTimeout });
-    const savingStarted = deferred<void>();
-    const savingGate = deferred<void>();
-    pendingReleases.push(() => savingGate.resolve());
-    let blocked = false;
-    const { data, registry, store, add } = setup(() => {
-      if (!blocked) return Promise.resolve();
-      savingStarted.resolve();
-      return savingGate.promise;
-    });
+    useRecordedTimers();
+    const gate = manualGate(pendingReleases);
+    const { data, registry, store, add } = setup(gate.save);
     await add("Pending"); const id = data.subscriptions[0].id;
     await store.setSubscriptionEnabled(id, false);
-    blocked = true;
+    gate.arm();
     const saving = ownStoreJob(jobs, store.updateSettings((settings) => { settings.showDisabled = false; }));
-    await savingStarted.promise;
+    await gate.started;
     const reading = ownStoreJob(jobs, querySubscriptions("get", { id }, store, registry));
     await vi.advanceTimersByTimeAsync(1500);
-    blocked = false; savingGate.resolve(); await saving;
+    gate.open(); await saving;
     expect(await reading).toContain("Status: disabled");
     expect(await querySubscriptions("get", { id }, store, registry)).toContain("Status: disabled\n");
 
@@ -168,29 +153,22 @@ describe("subscription CLI", () => {
     ["edit", false], ["edit", true], ["delete", false], ["delete", true],
     ["restore", false], ["restore", true],
   ] as const)("reads and exports settled %s state after save failure=%s", async (kind, fails) => {
-    const savingStarted = deferred<void>();
-    const savingGate = deferred<void>();
-    pendingReleases.push(() => savingGate.resolve());
-    let blocked = false;
-    const { data, registry, store, add } = setup(() => {
-      if (!blocked) return Promise.resolve();
-      savingStarted.resolve();
-      return savingGate.promise;
-    });
+    const gate = manualGate(pendingReleases);
+    const { data, registry, store, add } = setup(gate.save);
     await add("Original"); const id = data.subscriptions[0].id;
     const replacement = setup(); await replacement.add("Replacement");
     const replacementBackup = await exportBackup(replacement.store);
-    blocked = true;
+    gate.arm();
     const mutation = kind === "edit" ? store.updateSubscription(id, { name: "Edited" })
       : kind === "delete" ? store.deleteSubscription(id)
       : store.restoreBackupJson(replacementBackup, () => true);
     const outcome = mutation.catch((error: unknown) => error);
     jobs.push(outcome);
-    await savingStarted.promise;
+    await gate.started;
     const listing = ownStoreJob(jobs, querySubscriptions("list", {}, store, registry));
     const exporting = ownStoreJob(jobs, exportBackup(store));
-    if (fails) savingGate.reject(new Error("disk full"));
-    else savingGate.resolve();
+    if (fails) gate.fail(new Error("disk full"));
+    else gate.open();
     await outcome;
     const expectedName = fails ? "Original" : kind === "edit" ? "Edited" : kind === "restore" ? "Replacement" : undefined;
     expect(await listing).toContain(expectedName ?? "No subscriptions found.");
@@ -200,23 +178,16 @@ describe("subscription CLI", () => {
   });
 
   it("waits for failed deletion rollback, including grace state, and isolates snapshots", async () => {
-    vi.useFakeTimers(); vi.stubGlobal("window", { setTimeout, clearTimeout });
-    const savingStarted = deferred<void>();
-    const savingGate = deferred<void>();
-    pendingReleases.push(() => savingGate.resolve());
-    let fail = false;
-    const { data, registry, store, add } = setup(() => {
-      if (!fail) return Promise.resolve();
-      savingStarted.resolve();
-      return savingGate.promise;
-    });
+    useRecordedTimers();
+    const gate = manualGate(pendingReleases);
+    const { data, registry, store, add } = setup(gate.save);
     await add("Keep me"); const id = data.subscriptions[0].id;
-    await store.setSubscriptionEnabled(id, false); fail = true;
+    await store.setSubscriptionEnabled(id, false); gate.arm();
     const deletion = ownStoreJob(jobs, store.deleteSubscription(id));
     const rejected = expect(deletion).rejects.toThrow("disk full");
     const reading = ownStoreJob(jobs, querySubscriptions("get", { id }, store, registry));
-    await savingStarted.promise;
-    savingGate.reject(new Error("disk full")); await rejected;
+    await gate.started;
+    gate.fail(new Error("disk full")); await rejected;
     expect(await reading).toContain("Status: disabled (pending disable; undo available)");
     const snapshot = await store.readSnapshot(); snapshot.data.subscriptions[0].price.amountMinor = 999;
     expect(data.subscriptions[0].price.amountMinor).toBe(1234);

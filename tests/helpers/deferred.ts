@@ -14,3 +14,8 @@ export function deferred<T>(): Deferred<T> {
   });
   return { promise, resolve, reject };
 }
+
+/** The rejection reason a promise settles with, or null when it resolves. */
+export function errorOf(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(() => null, (reason: unknown) => reason);
+}

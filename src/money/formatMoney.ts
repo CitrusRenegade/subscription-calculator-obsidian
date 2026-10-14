@@ -22,10 +22,15 @@ export function formatMoney(
   return `${formatted} ${currency ? getCurrencyAmountMarker(currency) : "?"}`;
 }
 
+/** Locale-independent minor-units → decimal string with exactly `scale` fractional digits. */
+export function minorToDecimal(amountMinor: number, scale: number): string {
+  const digits = String(amountMinor).padStart(scale + 1, "0");
+  if (scale === 0) return digits;
+  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+}
+
 export function moneyToInputValue(money: Money, registry: CurrencyRegistry): string {
   const currency = registry.get(money.currencyCode);
   if (!currency) return String(money.amountMinor);
-  const digits = String(money.amountMinor).padStart(currency.scale + 1, "0");
-  if (currency.scale === 0) return digits;
-  return `${digits.slice(0, -currency.scale)}.${digits.slice(-currency.scale)}`;
+  return minorToDecimal(money.amountMinor, currency.scale);
 }

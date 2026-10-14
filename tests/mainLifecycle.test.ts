@@ -43,7 +43,8 @@ describe("plugin startup", () => {
 
     expect(plugin.registeredViewTypes).toEqual(["subscription-calculator-view"]);
     expect([...plugin.cliHandlers.keys()]).toEqual([
-      "subscription-calculator:list", "subscription-calculator", "subscription-calculator:export",
+      "subscription-calculator:list", "subscription-calculator:get", "subscription-calculator:export",
+      "subscription-calculator:new", "subscription-calculator:set", "subscription-calculator:currencies", "subscription-calculator:summary",
     ]);
     expect(notices.messages).toEqual(["Saved-data cleanup failed"]);
     expect(error).toHaveBeenCalledWith(
