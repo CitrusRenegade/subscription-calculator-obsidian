@@ -4,4 +4,6 @@ main.js
 .hotreload
 .agents/
 AGENTS.md
+CLAUDE.md
 PROJECT_PLAN.md
+/DECISIONS.md
