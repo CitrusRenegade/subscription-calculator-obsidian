@@ -9,7 +9,7 @@ The suite separates domain behavior from DOM interaction. Production code and us
 
 ## Boundaries
 
-Node suites cover money, dates, migrations, persistence, queued CLI reads and icon races. `helpers/deferred.ts` exposes explicit completion gates; `helpers/storeFixture.ts` builds the real store, registry and icon service. Tests release owned gates and settle pending work before disposing stores or resetting globals/timers. Teardown permits only cleanup saves to complete without opening another test gate; asserted operations still use the test's save callback.
+Node suites cover money, dates, migrations, persistence, queued CLI reads and icon races. `helpers/deferred.ts` exposes explicit completion gates and `errorOf`; `helpers/storeFixture.ts` builds the real store, registry and icon service, provides the save-gate helpers and the shared `storeTest()` teardown; `helpers/timers.ts` stubs the window timers; `helpers/subscriptionFactory.ts` builds subscription and data fixtures. Tests release owned gates and settle pending work before disposing stores or resetting globals/timers. Teardown permits only cleanup saves to complete without opening another test gate; asserted operations still use the test's save callback.
 
 UI suites opt into jsdom and share `helpers/obsidianDom.ts`. Nodes, events, disabled buttons, focus and number-input selection use native DOM semantics. The adapter only supplies the Obsidian UI API boundary. Store/view/card integration uses the actual components and checks that completing one save preserves another card's active draft.
 
@@ -19,9 +19,9 @@ jsdom does not measure layout, render themes, reproduce Obsidian settings rerend
 
 ## Native smoke protocol
 
-Use only the configured `test3` vault at `C:\test3`; preserve its subscriptions and settings. Build/reload first, open the plugin view and settings, and record the loaded artifact. Treat a hidden window or missing initial focus as blocked, never as a pass.
+Use only the test vault configured in local `AGENTS.md`; preserve its subscriptions and settings. Follow the installed devkit live guide for Playwright/CDP, secondary-display placement and fresh-frame readiness. Build/reload with the explicit configured vault name/path, open the plugin view/settings, and record the loaded artifact. A successful reload or a screenshot alone does not establish the tested behavior.
 
-1. With Obsidian visible and focused, open a price editor, type a draft, and save another card. Check that the draft and active editor survive. Cancel or restore any test edits.
+1. With the test window shown and rendering, open a price editor and verify its field focus, type a draft, and save another card. Check that the draft and active editor survive. Cancel or restore any test edits.
 2. In Custom currencies, focus a text field and set a selection before triggering a settings refresh. Check initial focus first, then verify draft, selection and focus after refresh. Check both the primary window and a popout where supported.
 3. Open Add/Edit dialogs and switch Custom/Emoji modes. Check conditional controls and retained drafts; close without saving.
 4. Inspect narrow and wide views, summary overlap and bottom spacing with the actual theme. Native screenshots/layout checks are separate from the automated DOM suite.

@@ -5,9 +5,11 @@ src/
 ├── main.ts                         Plugin entry point and lifecycle
 ├── types.ts                        Shared domain and data types
 ├── constants.ts                    Shared constants
-├── cli/subscriptions.ts            Read-only CLI queries and backup export
+├── cli/subscriptions.ts            Human CLI commands, JSON queries, discovery and summary
 ├── data/
 │   ├── SubscriptionStore.ts        Subscription state and business logic
+│   ├── subscriptionCommands.ts     Strict candidates shared by writes and previews
+│   ├── backup.ts                   Restorable backup serialization and restore
 │   ├── defaultData.ts              Default plugin data and settings
 │   └── migrations.ts               Persisted data migrations
 ├── date/
@@ -49,6 +51,12 @@ This is the main complexity hotspot. A subscription can be effectively disabled 
 the 1.5-second grace period while its persisted `status` is still enabled. Use the
 store's view/query methods instead of reading or mutating `PluginData.subscriptions`
 from UI code.
+
+## CLI
+
+`src/cli/subscriptions.ts` owns command registration, argument mapping and output. Strict candidates belong in `src/data/subscriptionCommands.ts`; `SubscriptionStore` owns queued writes, rollback, status intents and dry-run. Local root `DECISIONS.md`, section CLI, records the purpose, rationale and durable interface choices.
+
+Keep consequential code or architecture choices and their evidenced reasons in local root `DECISIONS.md`. Prefer durable intent and behavior over inventories of current flags, fields or error codes. Do not record work progress, file moves or check results there.
 
 ## `src/data/migrations.ts`
 
