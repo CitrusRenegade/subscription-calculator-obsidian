@@ -9,13 +9,61 @@ import { deferred } from "./helpers/deferred";
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
 function openModal(addSubscription = vi.fn(async () => undefined)) {
   const modal = new AddSubscriptionModal(new App() as unknown as ObsidianApp,
-    { addSubscription } as unknown as SubscriptionStore, new BuiltinCurrencyRegistry(), "USD");
+    { addSubscription } as unknown as SubscriptionStore, new BuiltinCurrencyRegistry(), "USD", { iconService: { getCachedIcon: () => null }, getProvider: () => "google-s2" });
   modal.open();
   return { modal, addSubscription };
 }
 describe("AddSubscriptionModal", () => {
   beforeEach(resetObsidianDom);
   afterEach(() => vi.restoreAllMocks());
+  it("uses the enabled status switch to create a disabled subscription", async () => {
+    const { modal, addSubscription } = openModal();
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Paused service");
+    changeInput(findSetting(modal.contentEl, "Price").texts[0].inputEl, "12.99");
+    const enabled = modal.contentEl.querySelector<HTMLInputElement>('input[aria-label="Enable subscription"]')!;
+    expect(enabled.checked).toBe(true);
+    enabled.checked = false;
+    enabled.dispatchEvent(new Event("change", { bubbles: true }));
+    findButton(modal.contentEl, "Add").click();
+    await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
+    expect(addSubscription).toHaveBeenCalledWith(expect.objectContaining({ status: "disabled" }));
+  });
+  it("shows inline name, price and custom-day errors without writing, and Cancel confirms before discarding the draft", () => {
+    const { modal, addSubscription } = openModal();
+    findButton(modal.contentEl, "Add").click();
+    const name = findSetting(modal.contentEl, "Name").texts[0].inputEl;
+    const price = findSetting(modal.contentEl, "Price").texts[0].inputEl;
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(price.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(name);
+    changeInput(name, "Music"); changeInput(price, "12.99");
+    changeSelect(findSetting(modal.contentEl, "Billing period").dropdowns[0].selectEl, "custom");
+    const days = findSetting(modal.contentEl, "Custom period days").texts[0].inputEl;
+    changeInput(days, "0"); findButton(modal.contentEl, "Add").click();
+    expect(days.getAttribute("aria-invalid")).toBe("true");
+    expect(addSubscription).not.toHaveBeenCalled();
+    findButton(modal.contentEl, "Cancel").click();
+    expect(modal.contentEl.isConnected).toBe(true);
+    findButton(document.body, "Discard changes").click();
+    expect(modal.contentEl.isConnected).toBe(false);
+  });
+  it("creates with the chosen icon mode and retains emoji drafts across mode changes", async () => {
+    const { modal, addSubscription } = openModal();
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Music");
+    changeInput(findSetting(modal.contentEl, "Price").texts[0].inputEl, "12.99");
+    const mode = findSetting(modal.contentEl, "Icon").dropdowns[0].selectEl;
+    const emoji = modal.contentEl.querySelector<HTMLInputElement>('input[aria-label="Emoji"]')!;
+    expectRowVisible(emoji.closest<HTMLElement>(".subscription-calculator-emoji-field")!, false);
+    mode.focus(); changeSelect(mode, "emoji");
+    expect(document.activeElement).toBe(mode);
+    changeInput(emoji, "🎵");
+    changeSelect(mode, "none"); changeSelect(mode, "emoji");
+    expect(emoji.value).toBe("🎵");
+    expect(modal.contentEl.textContent).not.toContain("Open link");
+    findButton(modal.contentEl, "Add").click();
+    await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
+    expect(addSubscription).toHaveBeenCalledWith(expect.objectContaining({ icon: { mode: "emoji", emoji: "🎵" } }));
+  });
   it("submits through Add once while pending, disables it, and permits retry after failure", async () => {
     const save = deferred<void>();
     const { modal, addSubscription } = openModal(vi.fn(() => save.promise));
@@ -53,6 +101,8 @@ describe("AddSubscriptionModal", () => {
     const save = deferred<void>();
     const { modal, addSubscription } = openModal(vi.fn(() => save.promise));
     const add = findButton(modal.contentEl, "Add");
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Music");
+    changeInput(findSetting(modal.contentEl, "Price").texts[0].inputEl, "12.99");
     try {
       add.click();
       // dispatchEvent invokes the listener even when native button.click() is disabled.

@@ -139,6 +139,7 @@ export const Platform = {
 
 export class Modal {
   readonly contentEl = new MockElement();
+  setTitle(_title: string): this { return this; }
   isClosed = false;
 
   constructor(_app: App) {}

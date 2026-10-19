@@ -25,6 +25,27 @@ function setup(save = vi.fn(async () => undefined)) {
   return { data, icons, store, add, save };
 }
 describe("icon reliability", () => {
+  it("creates with emoji or currency icons and switches modes without changing payment data", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response);
+    const { store, data } = setup();
+    await store.addSubscription({ name: "Music", serviceUrl: "example.com", priceText: "12.34",
+      currencyCode: "USD", billingPeriod: "monthly", icon: { mode: "emoji", emoji: "🎵" } });
+    const id = data.subscriptions[0].id;
+    expect(requestUrl).not.toHaveBeenCalled();
+    await store.updateSubscription(id, { icon: { mode: "none", emoji: "🎵" } });
+    expect(data.subscriptions[0].icon).toMatchObject({ mode: "none", emoji: "🎵" });
+    expect(requestUrl).not.toHaveBeenCalled();
+    await store.updateSubscription(id, { icon: { mode: "auto", emoji: "🎵" } });
+    expect(requestUrl).toHaveBeenCalledOnce();
+    expect(data.subscriptions[0].icon.cacheKey).toBe("google-s2:example.com");
+    await store.updateSubscription(id, { icon: { mode: "emoji", emoji: "🎵" } });
+    const saved = (await store.readSnapshot()).data.subscriptions[0];
+    expect(saved.icon).toMatchObject({ mode: "emoji", emoji: "🎵" });
+    expect(saved.icon.cacheKey).toBeUndefined();
+    expect(saved.price).toEqual({ amountMinor: 1234, currencyCode: "USD" });
+    expect(saved.billingPeriod).toBe("monthly");
+    expect(saved.status).toBe("enabled");
+  });
   afterEach(async () => {
     try { await disposeStores(stores, pendingReleases, jobs); }
     finally { vi.restoreAllMocks(); vi.mocked(requestUrl).mockReset(); }

@@ -37,6 +37,9 @@ src/
     ├── subscriptionSort.ts         Subscription sorting
     └── components/
         ├── AddSubscriptionCard.ts
+        ├── SubscriptionDetailsFields.ts  Shared Add/Edit draft and detail controls
+        ├── SubscriptionIcon.ts        Shared card, table and form icon rendering
+        ├── FormFieldFeedback.ts       Accessible labels and inline validation
         ├── FormControls.ts
         ├── SubscriptionCard.ts
         ├── SubscriptionSummaryTable.ts
@@ -82,3 +85,5 @@ Clearing or replacing an icon must keep those two sides consistent.
 ## `tests/`
 
 Tests cover calculation, store and migration behavior, plugin lifecycle, settings, dialogs, cards, icons, styling, backup, and build support. Check the current `tests/*.test.ts` files for exact coverage; Obsidian visual behavior still needs a configured live test vault.
+
+`src/ui/components/UnsavedChangesModal.ts` owns shared dirty-form dismissal and discard confirmation for Add and Edit.

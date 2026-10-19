@@ -3,7 +3,7 @@ import type { IconService } from "../../icons/IconService";
 import type { MoneyDisplayPrecision, SubscriptionItem } from "../../types";
 import { formatMoney } from "../../money/formatMoney";
 import { getPerYearMinor, moneyFromMinor } from "../../money/totals";
-import { renderSubscriptionIcon } from "./SubscriptionCard";
+import { renderSubscriptionIcon } from "./SubscriptionIcon";
 
 export function renderSubscriptionSummaryTable(
   container: HTMLElement,

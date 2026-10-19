@@ -111,7 +111,8 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
       this.app,
       this.store,
       this.currencyRegistry,
-      this.data.settings.defaultCurrency
+      this.data.settings.defaultCurrency,
+      { iconService: this.iconService, getProvider: () => this.data.settings.faviconProvider }
     ).open();
   }
 

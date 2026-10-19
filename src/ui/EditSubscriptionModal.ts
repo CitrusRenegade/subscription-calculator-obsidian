@@ -1,151 +1,78 @@
-import { App, ButtonComponent, Modal, Notice, Setting } from "obsidian";
+import { UnsavedChangesModal } from "./components/UnsavedChangesModal";
+import { App, Notice, ButtonComponent } from "obsidian";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
-import { getOpenableServiceUrl } from "../icons/url";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
-import type { IconMode, SubscriptionItem } from "../types";
+import type { SubscriptionItem, SubscriptionViewItem } from "../types";
+import { createSubscriptionStatusSetting } from "./components/FormControls";
+import { SubscriptionDetailsFields, type SubscriptionIconContext } from "./components/SubscriptionDetailsFields";
 
-export class EditSubscriptionModal extends Modal {
-  private name: string;
-  private serviceUrl: string;
-  private startDate: string;
-  private iconMode: IconMode;
-  private emoji: string;
+export class EditSubscriptionModal extends UnsavedChangesModal {
+  private readonly fields: SubscriptionDetailsFields;
+  private saveButton: ButtonComponent | null = null;
+  private busy = false;
+  private enabled: boolean;
+  private readonly initialEnabled: boolean;
 
   constructor(
     app: App,
     private readonly store: SubscriptionStore,
-    private readonly registry: CurrencyRegistry,
-    private readonly item: SubscriptionItem
+    registry: CurrencyRegistry,
+    private readonly item: SubscriptionItem & Partial<Pick<SubscriptionViewItem, "effectiveStatus">>,
+    icons: SubscriptionIconContext
   ) {
     super(app);
-    this.name = item.name;
-    this.serviceUrl = item.serviceUrl ?? "";
-    this.startDate = item.startDate ?? "";
-    this.iconMode = item.icon.mode;
-    this.emoji = item.icon.emoji ?? "";
+    this.fields = new SubscriptionDetailsFields(registry, icons, item);
+    this.initialEnabled = (item.effectiveStatus ?? item.status) === "enabled";
+    this.enabled = this.initialEnabled;
   }
 
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("subscription-calculator-modal");
-    contentEl.createEl("h2", { text: "Edit subscription" });
-
-    new Setting(contentEl).setName("Name").addText((text) =>
-      text.setValue(this.name).onChange((value) => {
-        this.name = value;
-      })
-    );
-
-    let openUrlButton: ButtonComponent | undefined;
-    const serviceUrlSetting = new Setting(contentEl)
-      .setName("Service URL")
-      .addText((text) =>
-        text.setValue(this.serviceUrl).onChange((value) => {
-          this.serviceUrl = value;
-          openUrlButton?.setDisabled(!getOpenableServiceUrl(value));
-        })
-      )
-      .addButton((button) => {
-        openUrlButton = button
-          .setButtonText("Open URL")
-          .setDisabled(!getOpenableServiceUrl(this.serviceUrl))
-          .onClick(() => {
-            const url = getOpenableServiceUrl(this.serviceUrl);
-            if (url) contentEl.ownerDocument.defaultView?.open(url, "_blank");
-          });
-      });
-    serviceUrlSetting.settingEl.addClass("subscription-calculator-service-url-setting");
-
-    new Setting(contentEl)
-      .setName("Start date")
-      .setDesc("Optional. Used to calculate the next payment.")
-      .addText((text) => {
-        text.inputEl.type = "date";
-        text.setValue(this.startDate).onChange((value) => {
-          this.startDate = value;
-        });
-      });
-
-    let emojiSetting: Setting;
-    new Setting(contentEl).setName("Icon mode").addDropdown((dropdown) =>
-      dropdown
-        .addOption("auto", "Auto favicon")
-        .addOption("emoji", "Emoji")
-        .addOption("none", "None")
-        .setValue(this.iconMode)
-        .onChange((value) => {
-          this.iconMode = value as IconMode;
-          emojiSetting.settingEl.hidden = this.iconMode !== "emoji";
-          emojiSetting.settingEl.style.setProperty("display", this.iconMode === "emoji" ? "" : "none");
-        })
-    );
-
-    emojiSetting = new Setting(contentEl).setName("Emoji").addText((text) =>
-        text.setValue(this.emoji).onChange((value) => {
-          this.emoji = value;
-        })
-      );
-    emojiSetting.settingEl.hidden = this.iconMode !== "emoji";
-    emojiSetting.settingEl.style.setProperty("display", this.iconMode === "emoji" ? "" : "none");
-
-    new Setting(contentEl)
-      .setName("Icon cache")
-      .setDesc("Fetching happens only on add, URL changes, or this explicit refresh.")
-      .addButton((button) =>
-        button.setButtonText("Refresh icon").onClick(() => void this.refreshIcon())
-      )
-      .addButton((button) =>
-        button.setButtonText("Clear icon").onClick(() => void this.clearIcon())
-      );
-
-    new Setting(contentEl).addButton((button) =>
-      button.setButtonText("Save").setCta().onClick(() => void this.save())
-    );
+    this.setTitle("Edit subscription");
+    const form = contentEl.createDiv({ cls: "subscription-calculator-form-grid" });
+    this.fields.renderName(form);
+    this.fields.renderDetails(form, { openLink: true, onRefresh: () => void this.runAction("refresh") });
+    createSubscriptionStatusSetting(contentEl, this.enabled, (checked) => { this.enabled = checked; });
+    const actions = contentEl.createDiv({ cls: "subscription-calculator-modal-actions" });
+    new ButtonComponent(actions).setButtonText("Cancel").onClick(() => this.close());
+    this.saveButton = new ButtonComponent(actions)
+      .setButtonText("Save").setCta().onClick(() => void this.runAction("save"));
+    this.captureInitialValues();
   }
 
-  private async save(): Promise<void> {
-    if (await this.saveChanges()) {
-      this.close();
-    }
-  }
+  protected isSaving(): boolean { return this.busy; }
 
-  private async saveChanges(): Promise<boolean> {
+  private async runAction(action: "save" | "refresh"): Promise<void> {
+    if (this.busy || (action === "refresh" && !this.fields.canRefresh())) return;
+    if (action === "save" && !this.fields.validate()) { this.fields.focusInvalid(); return; }
+    this.busy = true;
+    this.fields.setBusy(true);
+    this.saveButton?.setDisabled(true);
     try {
-      await this.store.updateSubscription(this.item.id, {
-        name: this.name,
-        serviceUrl: this.serviceUrl,
-        startDate: this.startDate,
-        icon: {
-          mode: this.iconMode,
-          emoji: this.emoji,
-        },
-      });
-      return true;
+      if (action === "save") {
+        await this.store.updateSubscription(this.item.id, this.fields.getPatch());
+        if (this.enabled !== this.initialEnabled) {
+          await this.store.setSubscriptionEnabled(this.item.id, this.enabled);
+        }
+        this.closeAfterSave();
+      } else {
+        this.fields.setRefreshResult("Refreshing…");
+        const refreshed = await this.store.refreshIcon(this.item.id);
+        const snapshot = refreshed ? await this.store.readSnapshot() : null;
+        this.fields.setRefreshResult(
+          refreshed ? "Icon refreshed" : "Could not load the website icon. Try again.",
+          snapshot?.data.subscriptions.find((item) => item.id === this.item.id)
+        );
+      }
     } catch (e) {
-      new Notice(e instanceof Error ? e.message : "Failed to save subscription");
-      return false;
-    }
-  }
-
-  private async refreshIcon(): Promise<void> {
-    const saved = await this.saveChanges();
-    if (!saved) return;
-
-    try {
-      const refreshed = await this.store.refreshIcon(this.item.id);
-      new Notice(refreshed ? "Icon refreshed" : "No icon fetched");
-    } catch (e) {
-      new Notice(e instanceof Error ? e.message : "Failed to refresh icon");
-    }
-  }
-
-  private async clearIcon(): Promise<void> {
-    try {
-      await this.store.clearIcon(this.item.id);
-      new Notice("Icon cleared");
-    } catch (e) {
-      new Notice(e instanceof Error ? e.message : "Failed to clear icon");
+      if (action === "refresh") this.fields.setRefreshResult("Could not refresh the website icon. Try again.");
+      else new Notice(e instanceof Error ? e.message : "Failed to save subscription");
+    } finally {
+      this.busy = false;
+      this.fields.setBusy(false);
+      this.saveButton?.setDisabled(false);
     }
   }
 }

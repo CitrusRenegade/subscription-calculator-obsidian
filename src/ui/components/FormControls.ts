@@ -1,3 +1,4 @@
+import { Setting } from "obsidian";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
 import { getCurrencySelectLabel } from "../../money/currencyDisplay";
 import { MAX_CUSTOM_BILLING_PERIOD_DAYS } from "../../constants";
@@ -217,4 +218,17 @@ export function createToggleSwitch(
   label.createSpan({ cls: "subscription-calculator-toggle-track" });
   input.addEventListener("change", () => onChange(input.checked));
   return label;
+}
+
+/** Shared status row for subscription dialogs. */
+export function createSubscriptionStatusSetting(
+  container: HTMLElement,
+  enabled: boolean,
+  onChange: (enabled: boolean) => void
+): void {
+  const setting = new Setting(container)
+    .setName("Active subscription")
+    .setDesc("Inactive subscriptions are excluded from cost totals.");
+  setting.settingEl.addClass("mod-toggle", "subscription-calculator-status-setting");
+  createToggleSwitch(setting.controlEl, enabled, onChange, "Enable subscription");
 }

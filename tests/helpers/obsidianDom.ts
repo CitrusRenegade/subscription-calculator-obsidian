@@ -78,9 +78,16 @@ export class ItemView {
   constructor(readonly leaf: WorkspaceLeaf) { this.app = leaf.app; this.contentEl = mount(this.app.document); leaf.view = this; }
   getViewType(): string { return ""; }
 }
+export class Scope {
+  constructor(_parent?: Scope) {}
+  register(_modifiers: string[], _key: string, _callback: (event: KeyboardEvent) => boolean): void {}
+}
 export class Modal {
+  scope = new Scope();
   readonly contentEl: HTMLDivElement;
   isClosed = false;
+  title = "";
+  setTitle(title: string): this { this.title = title; return this; }
   constructor(readonly app: App) { this.contentEl = mount(app.document); }
   open(): void { this.isClosed = false; this.onOpen(); }
   onOpen(): void {}

@@ -13,8 +13,8 @@ const cases = [
     changes: [['this.billingPeriod !== "custom"', 'true'], ['this.billingPeriod === "custom" ? "" : "none"', '"none"']],
   },
   {
-    name: "hidden-emoji", source: "src/ui/EditSubscriptionModal.ts", tests: "tests/EditSubscriptionModal.test.ts",
-    changes: [['this.iconMode !== "emoji"', 'true'], ['this.iconMode === "emoji" ? "" : "none"', '"none"']],
+    name: "hidden-emoji", source: "src/ui/components/SubscriptionDetailsFields.ts", tests: "tests/EditSubscriptionModal.test.ts",
+    changes: [['const visible = this.iconMode === "emoji";', 'const visible = false;']],
   },
   {
     name: "disconnected-add-button", source: "src/ui/AddSubscriptionModal.ts", tests: "tests/AddSubscriptionModal.test.ts",

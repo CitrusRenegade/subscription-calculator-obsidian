@@ -219,7 +219,8 @@ export class SubscriptionsView extends ItemView {
         this.app,
         this.store,
         this.registry,
-        this.getSettings().defaultCurrency
+        this.getSettings().defaultCurrency,
+        { iconService: this.iconService, getProvider: () => this.getSettings().faviconProvider }
       ).open()
     );
 
@@ -503,7 +504,8 @@ export class SubscriptionsView extends ItemView {
   }
 
   private openEditModal(item: SubscriptionViewItem): void {
-    new EditSubscriptionModal(this.app, this.store, this.registry, item).open();
+    new EditSubscriptionModal(this.app, this.store, this.registry, item,
+      { iconService: this.iconService, getProvider: () => this.getSettings().faviconProvider }).open();
   }
 
   private confirmDelete(item: SubscriptionViewItem, card: HTMLElement): void {
