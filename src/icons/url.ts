@@ -18,12 +18,18 @@ export function getOpenableServiceUrl(value: string | undefined): string | undef
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed)?.[1]?.toLowerCase();
   if (scheme && scheme !== "http" && scheme !== "https") return undefined;
 
-  const normalized = scheme ? trimmed : normalizeUrlInput(trimmed);
-  if (!normalized) return undefined;
+  const normalized = scheme ? trimmed : `https://${trimmed}`;
+  // Obsidian's host parser can encode an invalid hostname instead of rejecting it.
+  // Check the original authority before normalization; spaces in a path are valid.
+  const authority = /^https?:\/\/([^/?#]*)/i.exec(normalized)?.[1] ?? normalized.split(/[/?#]/)[0];
+  const host = authority.slice(authority.lastIndexOf("@") + 1);
+  const invalidHostWhitespace = /\s|%(?:0[0-9a-f]|1[0-9a-f]|20|7f)/i;
+  if (invalidHostWhitespace.test(host)) return undefined;
 
   try {
     const url = new URL(normalized);
-    return url.protocol === "http:" || url.protocol === "https:"
+    return url.hostname && !invalidHostWhitespace.test(url.hostname) &&
+      (url.protocol === "http:" || url.protocol === "https:")
       ? url.toString()
       : undefined;
   } catch {
