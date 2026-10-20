@@ -21,7 +21,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["tests/versionBump.test.ts"],
+    files: ["tests/versionBump.test.ts", "tests/reloadTarget.test.ts"],
     languageOptions: {
       globals: { process: "readonly" },
     },

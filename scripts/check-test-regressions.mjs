@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -53,11 +53,15 @@ const cases = [
 const directory = mkdtempSync(join(tmpdir(), "subscription-test-regressions-"));
 let failures = 0;
 try {
-  const baseline = spawnSync(process.execPath, [vitest, "run", "--reporter=json", ...new Set(cases.map(probe => probe.tests))], {
+  const baseline = spawnSync(process.execPath, [vitest, "run", "--reporter=json", `--outputFile.json=${join(directory, "baseline.json")}`, ...new Set(cases.map(probe => probe.tests))], {
     cwd: root, encoding: "utf8", timeout: 30000, maxBuffer: 4 * 1024 * 1024,
   });
   if (baseline.status !== 0 || baseline.error) {
     throw new Error(`Unmodified regression tests must pass first.\n${baseline.error?.message ?? baseline.stderr}\n${baseline.stdout}`);
+  }
+  const baselineReport = JSON.parse(readFileSync(join(directory, "baseline.json"), "utf8"));
+  if (baselineReport.numFailedTests !== 0 || !(baselineReport.numTotalTests > 0)) {
+    throw new Error(`Unmodified regression tests must pass first: ${baselineReport.numFailedTests} failed of ${baselineReport.numTotalTests}.`);
   }
   for (const probe of cases) {
     const original = readFileSync(join(root, probe.source), "utf8");
@@ -65,24 +69,25 @@ try {
       if (!original.includes(from)) throw new Error(`${probe.name}: mutation target changed; update the probe.`);
     }
     const config = join(directory, `${probe.name}.mjs`);
-    writeFileSync(config, `import base from ${JSON.stringify(baseConfig)};
+    writeFileSync(config, `import { writeFileSync } from "node:fs";
+import base from ${JSON.stringify(baseConfig)};
 export default { ...base, plugins: [{ name: "regression-probe", enforce: "pre", transform(code, id) {
   if (!id.replaceAll("\\\\", "/").endsWith(${JSON.stringify(`/${probe.source}`)})) return;
   for (const [from, to] of ${JSON.stringify(probe.changes)}) {
     if (!code.includes(from)) throw new Error("Mutation target missing");
     code = code.replaceAll(from, to);
   }
-  console.error("REGRESSION_PROBE_APPLIED:${probe.name}");
+  writeFileSync(${JSON.stringify(join(directory, `${probe.name}.applied`))}, "1");
   return code;
 } }] };
 `);
-    const result = spawnSync(process.execPath, [vitest, "run", "--config", config, "--reporter=json", probe.tests], {
+    const result = spawnSync(process.execPath, [vitest, "run", "--config", config, "--reporter=json", `--outputFile.json=${join(directory, `${probe.name}.json`)}`, probe.tests], {
       cwd: root, encoding: "utf8", timeout: 30000, maxBuffer: 4 * 1024 * 1024,
     });
     let report;
-    try { report = JSON.parse(result.stdout); } catch { /* Diagnose a runner failure below. */ }
+    try { report = JSON.parse(readFileSync(join(directory, `${probe.name}.json`), "utf8")); } catch { /* Diagnose a runner failure below. */ }
     const detected = result.status !== 0 && !result.error &&
-      result.stderr.includes(`REGRESSION_PROBE_APPLIED:${probe.name}`) && report?.numFailedTests > 0;
+      existsSync(join(directory, `${probe.name}.applied`)) && report?.numFailedTests > 0;
     if (detected) console.log(`Detected: ${probe.name} (${report.numFailedTests} failed assertions/cases)`);
     else {
       failures++;
