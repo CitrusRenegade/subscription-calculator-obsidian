@@ -2,10 +2,10 @@
   --subscription-card-radius: 8px;
   --subscription-calculator-overlay-height: 0px;
   --subscription-calculator-sheet-height: 0px;
+
   container-type: inline-size;
   padding: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden auto;
   scroll-padding-top: var(--subscription-calculator-overlay-height);
 }
 
@@ -188,6 +188,7 @@
 
 .subscription-calculator-sort-icon {
   --icon-size: var(--icon-s);
+
   flex: 0 0 auto;
 }
 
@@ -362,8 +363,7 @@
   display: inline-grid;
   box-sizing: border-box;
   max-width: 100%;
-  align-items: center;
-  justify-items: center;
+  place-items: center center;
   flex: 0 1 auto;
   height: 32px;
   padding-inline: 10px;
@@ -567,7 +567,7 @@
   padding: 4px 0;
 }
 
-.subscription-calculator-table-row:not(.is-header):not(:last-child)::after {
+.subscription-calculator-table-row:not(.is-header, :last-child)::after {
   position: absolute;
   right: 0;
   bottom: -3px;
@@ -596,14 +596,15 @@
   font-size: var(--font-ui-small);
 }
 
-/* Keep the native modal title and close control together above the form. */
-.modal:has(> .subscription-calculator-modal) > .modal-header {
+/* Keep the native modal title and close control together above the form.
+   The three form modals add "subscription-calculator-modal-host" to their root. */
+.subscription-calculator-modal-host > .modal-header {
   min-height: 28px;
   padding-inline-end: 36px;
   margin-bottom: 24px;
 }
 
-.modal:has(> .subscription-calculator-modal) > .modal-header-button {
+.subscription-calculator-modal-host > .modal-header-button {
   top: var(--size-4-4);
   right: var(--size-4-4);
 }
@@ -623,8 +624,10 @@
   padding-block: 12px;
 }
 
-.subscription-calculator-modal [hidden] {
-  display: none !important;
+.subscription-calculator-modal [hidden],
+.subscription-calculator-modal .setting-item[hidden],
+.subscription-calculator-modal .setting-item-control[hidden] {
+  display: none;
 }
 
 .subscription-calculator-modal .setting-item-info,
@@ -634,8 +637,7 @@
 }
 
 .subscription-calculator-modal .setting-item-control {
-  flex-direction: row;
-  flex-wrap: wrap;
+  flex-flow: row wrap;
   justify-content: flex-start;
   gap: 8px;
 }
@@ -652,31 +654,11 @@
   flex: 1 1 0;
 }
 
-.subscription-calculator-modal .setting-item-control select {
-  max-width: 100%;
-}
-
-.subscription-calculator-modal .setting-item-control > select:not(.is-measuring) {
-  flex: 1 1 0;
-  width: 100%;
-  min-width: 0;
-}
-
-.subscription-calculator-modal .subscription-calculator-service-url-setting .setting-item-control button:not(.clickable-icon) {
-  flex: 0 0 auto;
-  width: auto;
-}
-
 .subscription-calculator-form-error {
   flex: 0 0 100%;
   width: 100%;
   color: var(--text-error);
   font-size: var(--font-ui-small);
-  text-align: start;
-}
-
-.subscription-calculator-modal .setting-item-control > .subscription-calculator-form-hint {
-  flex: 0 0 100%;
   text-align: start;
 }
 
@@ -702,6 +684,16 @@
   min-width: 0;
 }
 
+.subscription-calculator-modal .setting-item-control select {
+  max-width: 100%;
+}
+
+.subscription-calculator-modal .setting-item-control > select:not(.is-measuring) {
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+}
+
 .subscription-calculator-icon-preview-line > [role="img"] {
   display: grid;
   place-items: center;
@@ -716,6 +708,11 @@
 .subscription-calculator-emoji-field,
 .subscription-calculator-icon-field > .subscription-calculator-form-hint {
   margin-top: 8px;
+}
+
+.subscription-calculator-modal .setting-item-control > .subscription-calculator-form-hint {
+  flex: 0 0 100%;
+  text-align: start;
 }
 
 .subscription-calculator-emoji-field > label {
@@ -751,6 +748,11 @@
 }
 
 .subscription-calculator-modal-actions > button {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.subscription-calculator-modal .subscription-calculator-service-url-setting .setting-item-control button:not(.clickable-icon) {
   flex: 0 0 auto;
   width: auto;
 }
@@ -808,10 +810,6 @@
   flex: 1 1 auto;
 }
 
-.subscription-calculator-modal .subscription-calculator-status-setting .setting-item-control {
-  flex: 0 0 auto;
-}
-
 .subscription-calculator-discard-actions {
   display: flex;
   justify-content: flex-end;
@@ -840,6 +838,14 @@
   gap: 20px 16px;
 }
 
+.subscription-calculator-form-grid > .setting-item {
+  grid-column: 1 / -1;
+}
+
+.subscription-calculator-form-grid .setting-item-control {
+  width: 100%;
+}
+
 .modal .subscription-calculator-modal .subscription-calculator-form-grid .setting-item:not(.setting-item-heading) {
   display: flex;
   flex-direction: column;
@@ -850,12 +856,8 @@
   min-width: 0;
 }
 
-.subscription-calculator-form-grid > .setting-item {
-  grid-column: 1 / -1;
-}
-
-.subscription-calculator-form-grid .setting-item-control {
-  width: 100%;
+.subscription-calculator-modal .subscription-calculator-status-setting .setting-item-control {
+  flex: 0 0 auto;
 }
 
 .subscription-calculator-modal .subscription-calculator-form-grid > .subscription-calculator-half-field,

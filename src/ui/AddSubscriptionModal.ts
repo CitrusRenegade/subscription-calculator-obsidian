@@ -41,6 +41,7 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("subscription-calculator-modal");
+    this.modalEl.addClass("subscription-calculator-modal-host");
     this.setTitle("Add subscription");
 
     const form = contentEl.createDiv({ cls: "subscription-calculator-form-grid subscription-calculator-add-form" });

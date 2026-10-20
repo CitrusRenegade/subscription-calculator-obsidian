@@ -87,11 +87,12 @@ export class Scope {
 export class Modal {
   private closeCallback?: () => void;
   scope = new Scope();
+  readonly modalEl: HTMLDivElement;
   readonly contentEl: HTMLDivElement;
   isClosed = false;
   title = "";
   setTitle(title: string): this { this.title = title; return this; }
-  constructor(readonly app: App) { this.contentEl = mount(app.document); }
+  constructor(readonly app: App) { this.modalEl = mount(app.document); this.contentEl = mount(app.document); }
   open(): void { this.isClosed = false; this.onOpen(); }
   onOpen(): void {}
   onClose(): void {}

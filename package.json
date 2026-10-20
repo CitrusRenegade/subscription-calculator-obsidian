@@ -16,7 +16,8 @@
     "test": "tsc --noEmit --skipLibCheck --project tsconfig.test.json && vitest run",
     "test:regressions": "node scripts/check-test-regressions.mjs",
     "lint:obsidian": "eslint src/ tests/",
-    "check": "npm test && npm run build && npm run lint:obsidian",
+    "lint:css": "stylelint styles.css",
+    "check": "npm test && npm run build && npm run lint:obsidian && npm run lint:css",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
   "overrides": {
@@ -33,6 +34,8 @@
     "jsdom": "30.1.3",
     "obsidian": "1.14.4",
     "playwright": "^1.64.1",
+    "stylelint": "^17.16.0",
+    "stylelint-config-obsidianmd": "^0.1.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   }

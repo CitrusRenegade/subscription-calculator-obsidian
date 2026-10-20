@@ -35,6 +35,7 @@ export class CustomCurrencyModal extends UnsavedChangesModal {
   onOpen(): void {
     const content = this.contentEl;
     content.empty(); content.addClass("subscription-calculator-modal", "subscription-calculator-currency-modal");
+    this.modalEl.addClass("subscription-calculator-modal-host");
     this.setTitle(this.currency ? "Edit currency" : "Add currency");
     const form = content.createDiv({ cls: "subscription-calculator-form-grid" });
     new Setting(form).setName("Label").addText((text) => {
