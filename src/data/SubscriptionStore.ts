@@ -34,6 +34,7 @@ import {
   buildCreateCandidate,
   buildSetCandidate,
   isBillingPeriodValue,
+  isSubscriptionStatusValue,
   isValidCustomPeriodDays,
   StoreCommandError,
 } from "./subscriptionCommands";
@@ -541,7 +542,7 @@ export class SubscriptionStore {
       this.data.subscriptions.push(item);
       return item.id;
     }, () => true, true);
-    await this.tryEnsureIcon(id);
+    this.queueBackgroundIcon(id);
   }
 
   /**
@@ -1002,9 +1003,17 @@ export class SubscriptionStore {
     patch: UpdateSubscriptionInput
   ): Promise<void> {
     let shouldRefreshIcon = false;
+    // Durable form saves follow queue order, like CLI writes. Only a newer card
+    // toggle may supersede their status; invalid saves must not cancel commands.
+    const statusSequence = patch.status !== undefined ? (this.guiActionSequences.get(id) ?? 0) : undefined;
+    const datasetGeneration = this.datasetGeneration;
+    let consumedIntent: StatusIntent | null = null;
     await this.mutateAndSave(() => {
       const item = this.findItem(id);
       if (!item) return false;
+      if (patch.status !== undefined && !isSubscriptionStatusValue(patch.status)) {
+        throw new Error("Status must be enabled or disabled.");
+      }
       if (
         patch.customBillingPeriodDays !== undefined &&
         !isValidCustomPeriodDays(patch.customBillingPeriodDays)
@@ -1077,12 +1086,25 @@ export class SubscriptionStore {
         shouldRefreshIcon = item.icon.mode === "auto";
       }
 
+      if (statusSequence !== undefined &&
+        (this.guiActionSequences.get(id) ?? 0) === statusSequence &&
+        this.datasetGeneration === datasetGeneration) {
+        consumedIntent = this.clearDisableIntent(id);
+        item.status = patch.status!;
+        item.disabledOn = item.status === "disabled" ? todayLocalDate(this.clock) : undefined;
+      }
       item.updatedOn = todayLocalDate(this.clock);
       if (patch.serviceUrl !== undefined || patch.icon) this.nextIconRevision(id);
       this.pruneUnusedArchivedCustomCurrencies();
       return true;
-    }, (changed) => changed, true);
-    if (shouldRefreshIcon) await this.tryEnsureIcon(id);
+    }, (changed) => changed, true, () => {
+      if (consumedIntent && !this.disposed && !this.statusIntents.has(id) &&
+        (this.guiActionSequences.get(id) ?? 0) === statusSequence &&
+        this.datasetGeneration === datasetGeneration) {
+        this.scheduleDisableIntent(id, this.nextStatusGeneration(id), consumedIntent.deadline);
+      }
+    });
+    if (shouldRefreshIcon) this.queueBackgroundIcon(id);
   }
 
   async setSubscriptionEnabled(id: string, enabled: boolean): Promise<void> {
@@ -1377,17 +1399,6 @@ export class SubscriptionStore {
     }
     return summary;
   }
-  async clearIcon(id: string): Promise<void> {
-    await this.mutateAndSave(() => {
-      const item = this.findItem(id);
-      if (!item) return false;
-      this.nextIconRevision(id);
-      this.iconService.clearIcon(item);
-      item.updatedOn = todayLocalDate(this.clock);
-      return true;
-    }, (changed) => changed, true);
-  }
-
   getVisibleSubscriptions(): SubscriptionViewItem[] {
     const viewItems = this.data.subscriptions.map((item) => this.toViewItem(item));
     return sortByName(
@@ -1414,11 +1425,6 @@ export class SubscriptionStore {
 
   getTotalsByCurrency(): MoneyTotal[] {
     return calculateTotalsByCurrency(this.getEnabledSubscriptions());
-  }
-
-  private async tryEnsureIcon(id: string): Promise<void> {
-    try { await this.fetchAndCommitIcon(id, true); }
-    catch (error) { console.warn("Failed to fetch subscription icon:", error); }
   }
 
   private nextIconRevision(id: string): number {

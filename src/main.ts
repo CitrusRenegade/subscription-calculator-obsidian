@@ -10,6 +10,7 @@ import { SubscriptionSettingTab } from "./settings/SubscriptionSettingTab";
 import type { PluginData } from "./types";
 import { AddSubscriptionModal } from "./ui/AddSubscriptionModal";
 import { SubscriptionsView } from "./ui/SubscriptionsView";
+import { openModalInDocument } from "./ui/components/openModalInDocument";
 
 export default class SubscriptionCalculatorPlugin extends Plugin {
   data!: PluginData;
@@ -106,33 +107,35 @@ export default class SubscriptionCalculatorPlugin extends Plugin {
   }
 
   async openAddSubscriptionModal(): Promise<void> {
-    await this.openSubscriptions();
-    new AddSubscriptionModal(
+    const leaf = await this.openSubscriptions();
+    if (!leaf) return;
+    openModalInDocument(() => new AddSubscriptionModal(
       this.app,
       this.store,
       this.currencyRegistry,
       this.data.settings.defaultCurrency,
       { iconService: this.iconService, getProvider: () => this.data.settings.faviconProvider }
-    ).open();
+    ), leaf.view.containerEl.ownerDocument, "subscription-add");
   }
 
-  async openSubscriptions(): Promise<void> {
+  async openSubscriptions(): Promise<WorkspaceLeaf | null> {
     const existingLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBSCRIPTIONS)[0];
     if (existingLeaf) {
       this.app.workspace.setActiveLeaf(existingLeaf, { focus: true });
-      return;
+      return existingLeaf;
     }
 
     const leaf = this.getTargetLeaf();
     if (!leaf) {
       new Notice("Unable to open subscriptions view");
-      return;
+      return null;
     }
     await leaf.setViewState({ type: VIEW_TYPE_SUBSCRIPTIONS, active: true });
     if (this.data.settings.openMode === "right-sidebar") {
       this.app.workspace.rightSplit.expand();
     }
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    return leaf;
   }
 
   private getTargetLeaf(): WorkspaceLeaf | null {

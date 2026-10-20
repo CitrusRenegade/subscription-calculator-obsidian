@@ -24,7 +24,80 @@ function setup(save = vi.fn(async () => undefined)) {
   const add = (name = "Service", url = "https://example.com") => store.addSubscription({ name, serviceUrl: url, priceText: "12", currencyCode: "USD", billingPeriod: "monthly" });
   return { data, icons, store, add, save };
 }
+function waitForIcons(data: ReturnType<typeof setup>["data"]): Promise<void> {
+  return vi.waitFor(() => expect(data.subscriptions.every(item => !!item.icon.cacheKey)).toBe(true));
+}
 describe("icon reliability", () => {
+  it("rejects an older refresh after a second refresh starts for the same URL and mode", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response);
+    const { store, icons, data, add } = setup();
+    await add(); await waitForIcons(data);
+    const older = deferred<Awaited<ReturnType<typeof icons.fetchAutoIcon>>>();
+    const newer = deferred<Awaited<ReturnType<typeof icons.fetchAutoIcon>>>();
+    const fetch = vi.spyOn(icons, "fetchAutoIcon").mockImplementationOnce(() => older.promise).mockImplementationOnce(() => newer.promise);
+    const candidate = { cacheKey: "google-s2:example.com", serviceDomain: "example.com", sourceUrl: "https://example.com", dataUrl: "data:image/png;base64,AQID", contentType: "image/png", fetchedOn: "2026-10-20" };
+    const first = ownStoreJob(jobs, store.refreshIcon(data.subscriptions[0].id));
+    try {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      const second = ownStoreJob(jobs, store.refreshIcon(data.subscriptions[0].id));
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      older.resolve(candidate);
+      expect(await first).toBe(false);
+      newer.resolve(candidate);
+      expect(await second).toBe(true);
+    } finally { older.resolve(null); newer.resolve(null); }
+  });
+  it.each(["fetch", "save"] as const)("retains the successful primary save after a background icon %s failure", async (failure) => {
+    const { store, icons, data, save } = setup();
+    const gate = deferred<Awaited<ReturnType<typeof icons.fetchAutoIcon>>>();
+    vi.spyOn(icons, "fetchAutoIcon").mockImplementation(() => gate.promise);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const saving = ownStoreJob(jobs, store.addSubscription({ name: "Saved", serviceUrl: "https://example.com", priceText: "12", currencyCode: "USD", billingPeriod: "monthly" }));
+    try {
+      await saving;
+      const before = structuredClone(data);
+      if (failure === "fetch") gate.reject(new Error("offline"));
+      else {
+        save.mockRejectedValueOnce(new Error("icon save failed"));
+        gate.resolve({ cacheKey: "google-s2:example.com", serviceDomain: "example.com", sourceUrl: "https://example.com", dataUrl: "data:image/png;base64,AQID", contentType: "image/png", fetchedOn: "2026-10-20" });
+      }
+      await vi.waitFor(() => expect(warning).toHaveBeenCalled());
+      expect((await store.readSnapshot()).data).toEqual(before);
+    } finally { gate.resolve(null); await saving; }
+  });
+  it.each(["add", "edit"] as const)("completes %s after the primary save while the icon request is pending", async (action) => {
+    const { store, icons, data, save } = setup();
+    if (action === "edit") await store.addSubscription({ name: "Before", priceText: "12", currencyCode: "USD", billingPeriod: "monthly", icon: { mode: "none" } });
+    const gate = deferred<Awaited<ReturnType<typeof icons.fetchAutoIcon>>>();
+    vi.spyOn(icons, "fetchAutoIcon").mockImplementation(() => gate.promise);
+    let completed = false;
+    const saving = ownStoreJob(jobs, (action === "add" ? store.addSubscription({ name: "Saved", serviceUrl: "https://example.com", priceText: "12", currencyCode: "USD", billingPeriod: "monthly" })
+      : store.updateSubscription(data.subscriptions[0].id, { name: "Saved", serviceUrl: "https://example.com", icon: { mode: "auto" } })).then(() => { completed = true; }));
+    try {
+      await vi.waitFor(() => expect(completed).toBe(true));
+      expect(data.subscriptions[0].name).toBe("Saved");
+      expect(data.subscriptions[0].icon.cacheKey).toBeUndefined();
+      expect(save).toHaveBeenCalledTimes(action === "add" ? 1 : 2);
+      gate.resolve({ cacheKey: "google-s2:example.com", serviceDomain: "example.com", sourceUrl: "https://example.com", dataUrl: "data:image/png;base64,AQID", contentType: "image/png", fetchedOn: "2026-10-20" });
+      await vi.waitFor(() => expect(data.subscriptions[0].icon.cacheKey).toBe("google-s2:example.com"));
+    } finally { gate.resolve(null); await saving; }
+  });
+  it.each(["none", "delete"] as const)("drops a pending background icon after a newer %s action", async (action) => {
+    const { store, icons, data } = setup();
+    const gate = deferred<Awaited<ReturnType<typeof icons.fetchAutoIcon>>>();
+    const started = deferred<void>();
+    vi.spyOn(icons, "fetchAutoIcon").mockImplementation(() => { started.resolve(); return gate.promise; });
+    const saving = ownStoreJob(jobs, store.addSubscription({ name: "Saved", serviceUrl: "https://example.com", priceText: "12", currencyCode: "USD", billingPeriod: "monthly" }));
+    try {
+      await started.promise;
+      if (action === "none") await store.updateSubscription(data.subscriptions[0].id, { icon: { mode: "none" } });
+      else await store.deleteSubscription(data.subscriptions[0].id);
+      const before = structuredClone(data);
+      gate.resolve({ cacheKey: "google-s2:example.com", serviceDomain: "example.com", sourceUrl: "https://example.com", dataUrl: "data:image/png;base64,AQID", contentType: "image/png", fetchedOn: "2026-10-20" });
+      await saving; await store.readSnapshot();
+      expect(data).toEqual(before);
+    } finally { gate.resolve(null); await saving; }
+  });
   it("creates with emoji or currency icons and switches modes without changing payment data", async () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { store, data } = setup();
@@ -36,6 +109,7 @@ describe("icon reliability", () => {
     expect(data.subscriptions[0].icon).toMatchObject({ mode: "none", emoji: "🎵" });
     expect(requestUrl).not.toHaveBeenCalled();
     await store.updateSubscription(id, { icon: { mode: "auto", emoji: "🎵" } });
+    await waitForIcons(data);
     expect(requestUrl).toHaveBeenCalledOnce();
     expect(data.subscriptions[0].icon.cacheKey).toBe("google-s2:example.com");
     await store.updateSubscription(id, { icon: { mode: "emoji", emoji: "🎵" } });
@@ -76,6 +150,7 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data } = setup();
     await add("One"); await add("Two");
+    await waitForIcons(data);
     expect(requestUrl).toHaveBeenCalledOnce();
     expect(data.subscriptions[0].icon.cacheKey).toBe(data.subscriptions[1].icon.cacheKey);
     expect(await store.refreshAllIcons()).toEqual({ refreshed: 2, failed: 0, skipped: 0 });
@@ -91,6 +166,7 @@ describe("icon reliability", () => {
     await store.readSnapshot();
     expect(requestUrl).toHaveBeenCalledOnce();
     release(response); await Promise.all([first, second]);
+    await waitForIcons(data);
     expect(data.subscriptions.every(item => item.icon.cacheKey === "google-s2:example.com")).toBe(true);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.mocked(requestUrl).mockRejectedValueOnce(new Error("offline"));
@@ -99,16 +175,17 @@ describe("icon reliability", () => {
     expect(await store.refreshIcon(data.subscriptions[0].id)).toBe(true);
     expect(requestUrl).toHaveBeenCalledTimes(3);
   });
-  it("does not revive a later batch item cleared while another domain refresh waits", async () => {
+  it("does not revive a later batch item switched to a currency icon while another domain refresh waits", async () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data } = setup();
     await add("One"); await add("Two", "https://two.example.com");
+    await waitForIcons(data);
     let release!: (value: typeof response) => void;
     const started = deferred<void>();
     vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; started.resolve(); }));
     const refreshing = ownStoreJob(jobs, store.refreshAllIcons());
     await started.promise;
-    await store.clearIcon(data.subscriptions[1].id);
+    await store.updateSubscription(data.subscriptions[1].id, { icon: { mode: "none" } });
     release(response);
     expect(await refreshing).toEqual({ refreshed: 1, failed: 0, skipped: 1 });
     expect(data.subscriptions[1].icon.cacheKey).toBeUndefined();
@@ -118,6 +195,7 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data } = setup();
     await add("One"); await add("Two", "https://two.example.com"); await add("Three");
+    await waitForIcons(data);
     let release!: (value: typeof response) => void;
     const started = deferred<void>();
     const older = { ...response, arrayBuffer: new Uint8Array([2]).buffer };
@@ -139,6 +217,7 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data, save } = setup();
     await add("One"); await add("Two", "https://two.example.com"); await add("Three");
+    await waitForIcons(data);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     save.mockRejectedValueOnce(new Error("disk full"));
     vi.mocked(requestUrl).mockResolvedValue({ ...response, arrayBuffer: new Uint8Array([2]).buffer });
@@ -150,6 +229,7 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data } = setup();
     await add("One"); await add("Two", "https://two.example.com"); await add("Three");
+    await waitForIcons(data);
     let releaseBatch!: (value: typeof response) => void;
     const batchStarted = deferred<void>();
     let releaseNewer!: (value: typeof response) => void;
@@ -171,6 +251,7 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data, save } = setup();
     await add("One"); await add("Two");
+    await waitForIcons(data);
     await store.deleteSubscription(data.subscriptions[0].id);
     expect(Object.keys(data.iconCache)).toHaveLength(1);
     save.mockRejectedValueOnce(new Error("disk full"));
@@ -179,10 +260,11 @@ describe("icon reliability", () => {
     await store.deleteSubscription(data.subscriptions[0].id);
     expect(data.iconCache).toEqual({});
   });
-  it.each(["url", "clear", "delete", "restore", "provider", "dispose"] as const)("discards a deferred refresh after newer %s intent", async (change) => {
+  it.each(["url", "currency icon", "delete", "restore", "provider", "dispose"] as const)("discards a deferred refresh after newer %s intent", async (change) => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data, save } = setup();
     await add();
+    await waitForIcons(data);
     const id = data.subscriptions[0].id;
     const backup = JSON.stringify(createBackup(data));
     let release!: (value: typeof response) => void;
@@ -190,8 +272,11 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockImplementationOnce(() => deferredResponse(resolve => { release = resolve; started.resolve(); }));
     const refreshing = ownStoreJob(jobs, store.refreshIcon(id));
     await started.promise;
-    if (change === "url") await store.updateSubscription(id, { serviceUrl: "https://new.example.com" });
-    if (change === "clear") await store.clearIcon(id);
+    if (change === "url") {
+      await store.updateSubscription(id, { serviceUrl: "https://new.example.com" });
+      await waitForIcons(data);
+    }
+    if (change === "currency icon") await store.updateSubscription(id, { icon: { mode: "none" } });
     if (change === "delete") await store.deleteSubscription(id);
     if (change === "restore") await store.restoreBackupJson(backup, () => true);
     if (change === "provider") await store.updateSettings(settings => { settings.faviconProvider = "none"; });
@@ -207,6 +292,7 @@ describe("icon reliability", () => {
     vi.mocked(requestUrl).mockResolvedValue(response);
     const { add, store, data, save } = setup();
     await add();
+    await waitForIcons(data);
     const id = data.subscriptions[0].id;
     await store.updateSubscription(id, { name: "Saved name" });
     const before = structuredClone(data);

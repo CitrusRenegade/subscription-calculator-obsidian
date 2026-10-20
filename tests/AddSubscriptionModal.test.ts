@@ -7,7 +7,7 @@ import { AddSubscriptionModal } from "../src/ui/AddSubscriptionModal";
 import { App, Notice, changeInput, changeSelect, expectRowVisible, findButton, findSetting, resetObsidianDom } from "./helpers/obsidianDom";
 import { deferred } from "./helpers/deferred";
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
-function openModal(addSubscription = vi.fn(async () => undefined)) {
+function openModal(addSubscription = vi.fn(async (): Promise<void> => undefined)) {
   const modal = new AddSubscriptionModal(new App() as unknown as ObsidianApp,
     { addSubscription } as unknown as SubscriptionStore, new BuiltinCurrencyRegistry(), "USD", { iconService: { getCachedIcon: () => null }, getProvider: () => "google-s2" });
   modal.open();
@@ -16,6 +16,26 @@ function openModal(addSubscription = vi.fn(async () => undefined)) {
 describe("AddSubscriptionModal", () => {
   beforeEach(resetObsidianDom);
   afterEach(() => vi.restoreAllMocks());
+  it("ignores inactive custom days when deciding whether the form changed", () => {
+    const { modal } = openModal();
+    const period = findSetting(modal.contentEl, "Billing period").dropdowns[0].selectEl;
+    changeSelect(period, "custom");
+    changeInput(findSetting(modal.contentEl, "Custom period days").texts[0].inputEl, "17");
+    changeSelect(period, "monthly");
+    findButton(modal.contentEl, "Cancel").click();
+    expect(modal.contentEl.isConnected).toBe(false);
+  });
+  it("locks every editable field while Add is saving and restores them after failure", async () => {
+    const gate = deferred<void>();
+    const { modal } = openModal(vi.fn(() => gate.promise));
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Music");
+    changeInput(findSetting(modal.contentEl, "Price").texts[0].inputEl, "12");
+    findButton(modal.contentEl, "Add").click();
+    const controls = Array.from(modal.contentEl.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select"));
+    expect(controls.every(control => control.disabled)).toBe(true);
+    gate.reject(new Error("disk full"));
+    await vi.waitFor(() => expect(controls.every(control => !control.disabled)).toBe(true));
+  });
   it("uses the enabled status switch to create a disabled subscription", async () => {
     const { modal, addSubscription } = openModal();
     changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Paused service");

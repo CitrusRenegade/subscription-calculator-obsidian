@@ -4,7 +4,7 @@ import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import type { IconService } from "../src/icons/IconService";
 import { createDefaultData } from "../src/data/defaultData";
 import { DataBackedCurrencyRegistry } from "../src/money/CurrencyRegistry";
-import { App, WorkspaceLeaf, resetObsidianDom } from "./helpers/obsidianDom";
+import { App, Modal, WorkspaceLeaf, resetObsidianDom } from "./helpers/obsidianDom";
 import { viewItem } from "./helpers/subscriptionFactory";
 
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
@@ -47,6 +47,19 @@ describe("SubscriptionsView interaction continuity with actual cards", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("distinguishes Add and individual Edit dialogs while reusing repeated actions", async () => {
+    const { view, container } = setup(); await open(view);
+    const dialogs: Modal[] = [];
+    vi.spyOn(Modal.prototype, "open").mockImplementation(function (this: Modal) { dialogs.push(this); this.onOpen(); });
+    try {
+      const add = container.querySelector<HTMLButtonElement>(".subscription-calculator-add-card")!;
+      const edits = container.querySelectorAll<HTMLButtonElement>('button[aria-label="Edit subscription"]');
+      add.click(); edits[0].click(); edits[1].click(); edits[0].click(); add.click();
+      expect(dialogs.map(dialog => dialog.title)).toEqual(["Add subscription", "Edit subscription", "Edit subscription"]);
+      expect(dialogs.slice(1).map(dialog => dialog.contentEl.querySelector<HTMLInputElement>('input[aria-label="Name"]')!.value)).toEqual(["A", "B"]);
+    } finally { for (const dialog of dialogs.reverse()) dialog.close(); }
   });
 
   it("keeps an unfinished price and focus when an unrelated save notifies", async () => {

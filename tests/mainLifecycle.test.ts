@@ -1,6 +1,8 @@
 import { Notice } from "obsidian";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SubscriptionCalculatorPlugin from "../src/main";
+import { openModalInDocument } from "../src/ui/components/openModalInDocument";
+vi.mock("../src/ui/components/openModalInDocument", () => ({ openModalInDocument: vi.fn() }));
 
 const notices = Notice as unknown as {
   messages: string[];
@@ -11,6 +13,15 @@ describe("plugin startup", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("routes command dialogs to the subscription view document", async () => {
+    const plugin = new SubscriptionCalculatorPlugin({} as never, {} as never);
+    const owner = {} as Document;
+    const leaf = { view: { containerEl: { ownerDocument: owner } } };
+    vi.spyOn(plugin, "openSubscriptions").mockResolvedValue(leaf as never);
+    await plugin.openAddSubscriptionModal();
+    expect(openModalInDocument).toHaveBeenCalledWith(expect.any(Function), owner, "subscription-add");
   });
 
   it("continues registering the plugin when startup cleanup cannot be saved", async () => {

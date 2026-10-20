@@ -11,9 +11,10 @@ import type {
   SubscriptionViewItem,
 } from "../types";
 import { AddSubscriptionModal } from "./AddSubscriptionModal";
-import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
+import { ConfirmationModal } from "./components/UnsavedChangesModal";
 import { EditSubscriptionModal } from "./EditSubscriptionModal";
 import { renderAddSubscriptionCard } from "./components/AddSubscriptionCard";
+import { openModalInDocument } from "./components/openModalInDocument";
 import {
   renderSubscriptionCard,
   setSubscriptionCardDeletionPending,
@@ -214,15 +215,15 @@ export class SubscriptionsView extends ItemView {
       cards.lastElementChild?.setAttribute("data-subscription-id", item.id);
     }
 
-    renderAddSubscriptionCard(cards, () =>
-      new AddSubscriptionModal(
+    renderAddSubscriptionCard(cards, () => openModalInDocument(
+      () => new AddSubscriptionModal(
         this.app,
         this.store,
         this.registry,
         this.getSettings().defaultCurrency,
         { iconService: this.iconService, getProvider: () => this.getSettings().faviconProvider }
-      ).open()
-    );
+      ), this.contentEl.ownerDocument, "subscription-add"
+    ));
 
     renderSubscriptionSummaryTable(
       body,
@@ -504,8 +505,9 @@ export class SubscriptionsView extends ItemView {
   }
 
   private openEditModal(item: SubscriptionViewItem): void {
-    new EditSubscriptionModal(this.app, this.store, this.registry, item,
-      { iconService: this.iconService, getProvider: () => this.getSettings().faviconProvider }).open();
+    openModalInDocument(() => new EditSubscriptionModal(this.app, this.store, this.registry, item,
+      { iconService: this.iconService, getProvider: () => this.getSettings().faviconProvider }),
+      this.contentEl.ownerDocument, `subscription-edit:${item.id}`);
   }
 
   private confirmDelete(item: SubscriptionViewItem, card: HTMLElement): void {
@@ -520,7 +522,14 @@ export class SubscriptionsView extends ItemView {
     };
 
     if (this.getSettings().confirmBeforeDelete) {
-      new ConfirmDeleteModal(this.app, item.name, remove).open();
+      openModalInDocument(() => new ConfirmationModal(this.app, {
+        title: "Delete subscription?",
+        message: `${item.name} will be removed permanently.`,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        warning: true,
+        onConfirm: remove,
+      }), card.ownerDocument, "subscription-delete");
     } else {
       remove();
     }

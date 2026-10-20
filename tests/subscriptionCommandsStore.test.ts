@@ -626,7 +626,6 @@ describe("subscription command store APIs", () => {
     ["deleteCustomCurrency", (store: SubscriptionStore) => store.deleteCustomCurrency("USD")],
     ["cleanupUnusedArchivedCustomCurrencies", (store: SubscriptionStore) => store.cleanupUnusedArchivedCustomCurrencies()],
     ["deleteSubscription", (store: SubscriptionStore) => store.deleteSubscription("ab1")],
-    ["clearIcon", (store: SubscriptionStore) => store.clearIcon("ab1")],
     ["refreshIcon", (store: SubscriptionStore) => store.refreshIcon("ab1")],
     ["refreshAllIcons", (store: SubscriptionStore) => store.refreshAllIcons()],
   ])("rejects %s with UNAVAILABLE after disposal", async (_name, invoke) => {

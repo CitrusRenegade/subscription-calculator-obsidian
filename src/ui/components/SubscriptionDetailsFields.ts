@@ -26,6 +26,7 @@ export class SubscriptionDetailsFields {
   private hint: HTMLElement | null = null;
   private refreshStatus: HTMLElement | null = null;
   private refreshButton: ButtonComponent | null = null;
+  private refreshMessage = "";
   private feedback: Partial<Record<"name" | "date" | "url" | "emoji", FormFieldFeedback>> = {};
   private submitted = false;
   private busy = false;
@@ -76,9 +77,10 @@ export class SubscriptionDetailsFields {
     const url = new Setting(container).setName("Service URL").addText((text) => {
       text.setPlaceholder("https://example.com").setValue(this.serviceUrl).onChange((value) => {
         this.serviceUrl = value;
+        this.refreshMessage = "";
         openButton?.setDisabled(!getOpenableServiceUrl(value));
         this.updateIconState();
-        this.validateUrl();
+        if (this.submitted) this.validateUrl();
       });
       this.feedback.url = new FormFieldFeedback(text.inputEl, "Service URL");
     });
@@ -107,6 +109,7 @@ export class SubscriptionDetailsFields {
       dropdown.addOption("auto", "Auto favicon").addOption("emoji", "Emoji")
         .addOption("none", "Currency icon").setValue(this.iconMode).onChange((value) => {
           this.iconMode = value as IconMode;
+          this.refreshMessage = "";
           this.updateIconState();
           if (this.submitted) this.validate();
         });
@@ -144,12 +147,12 @@ export class SubscriptionDetailsFields {
   setCurrencyCode(code: string): void { this.currencyCode = code; this.updateIconState(); }
   setBusy(busy: boolean): void {
     this.busy = busy;
-    this.refreshButton?.setDisabled(busy);
+    this.refreshButton?.setDisabled(busy || !this.canRefresh());
   }
   setRefreshResult(message: string, item?: SubscriptionItem): void {
     if (item) this.savedItem = item;
+    this.refreshMessage = message;
     this.updateIconState();
-    this.refreshStatus?.setText(message);
   }
 
   canRefresh(): boolean {
@@ -159,6 +162,7 @@ export class SubscriptionDetailsFields {
   }
 
   private updateIconState(): void {
+    const canRefresh = this.canRefresh();
     const visible = this.iconMode === "emoji";
     if (this.emojiField) {
       this.emojiField.hidden = !visible;
@@ -185,17 +189,18 @@ export class SubscriptionDetailsFields {
     if (this.iconMode === "auto") {
       if (!getOpenableServiceUrl(this.serviceUrl)) message = "Add a service URL to use a website icon.";
       else if (this.icons.getProvider() === "none") message = "Website icon downloads are disabled in settings.";
-      else if (!this.canRefresh()) message = "The website icon will be loaded when you save.";
+      else if (!canRefresh) message = "The website icon will be loaded when you save.";
       else if (this.savedItem && !this.icons.iconService.getCachedIcon(this.savedItem)) {
         message = "No website icon loaded. Refresh to try again.";
       } else message = "Uses the service website icon. Refresh icon downloads it again.";
     }
     if (this.hint) { this.hint.setText(message); this.hint.hidden = !message; }
     if (this.refreshButton) {
-      this.refreshButton.buttonEl.hidden = !this.canRefresh();
-      this.refreshButton.buttonEl.parentElement!.hidden = !this.canRefresh();
+      this.refreshButton.buttonEl.hidden = !canRefresh;
+      this.refreshButton.buttonEl.parentElement!.hidden = !canRefresh && !this.refreshMessage;
+      this.refreshButton.setDisabled(this.busy || !canRefresh);
     }
-    if (this.refreshStatus) { this.refreshStatus.setText(""); this.refreshStatus.hidden = !this.canRefresh(); }
+    if (this.refreshStatus) { this.refreshStatus.setText(this.refreshMessage); this.refreshStatus.hidden = !this.refreshMessage; }
   }
 
   private validateUrl(): boolean {
@@ -212,7 +217,6 @@ export class SubscriptionDetailsFields {
     return !Object.values(this.feedback).some((field) => field.invalid);
   }
 
-  focusInvalid(): void { Object.values(this.feedback).find((field) => field.invalid)?.input.focus(); }
 
   getPatch() {
     return { name: this.name, serviceUrl: this.serviceUrl, startDate: this.startDate,

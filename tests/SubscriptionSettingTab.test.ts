@@ -12,6 +12,7 @@ interface Definition {
   name?: string; heading?: string; type?: string;
   control?: { key?: string; type?: string; options?: Record<string, string> };
   items?: Definition[]; page?: () => SettingPage;
+  action?: () => void; addItem?: { name: string; action: () => void }; emptyState?: string;
   render?: (setting: Setting, group: unknown) => void;
 }
 function createPlugin() {
@@ -40,13 +41,6 @@ function setup(plugin = createPlugin()) {
   const render = (name: string) => { const definition = find(name); definition.render!(new Setting(tab.containerEl).setName(name), {}); return findButton(tab.containerEl, name === "Refresh all icons" ? "Refresh all" : name === "Export backup" ? "Export JSON" : "Restore JSON"); };
   return { plugin, tab, find, render };
 }
-function withCurrencies() {
-  const plugin = createPlugin();
-  plugin.data.customCurrencies.push({ code: "TOK", label: "TOK", amountMarker: "¤", scale: 2, source: "custom" }, { code: "PTS", label: "PTS", scale: 0, source: "custom" });
-  const state = setup(plugin); const page = state.find("Custom currencies").page!(); page.display();
-  const row = (code: string) => Array.from(page.containerEl.querySelectorAll<HTMLElement>("[data-currency-code]")).find(element => element.dataset.currencyCode === code)!;
-  return { ...state, page, row };
-}
 function readBlob(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -56,38 +50,34 @@ function readBlob(blob: Blob): Promise<string> {
   });
 }
 describe("SubscriptionSettingTab", () => {
+  it("shows both archived and used indicators for the same currency", () => {
+    const plugin = createPlugin();
+    plugin.data.customCurrencies.push({ code: "TOK", label: "TOK", scale: 2, source: "custom", isArchived: true });
+    plugin.store.isCurrencyUsed.mockReturnValue(true);
+    const { find } = setup(plugin);
+    const row = find("Custom currencies").items![0].items![0] as Definition & { desc: string };
+    expect(row.desc).toContain("Archived"); expect(row.desc).toContain("Used by subscriptions");
+  });
   beforeEach(resetObsidianDom);
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-  it("restores neighboring focus and selection after parent update moves focus", async () => {
-    const { page, row, tab, plugin } = withCurrencies();
-    const field = row("PTS").querySelector("input")!; field.focus(); field.setSelectionRange(1, 2);
-    const outsider = document.body.createEl("button");
-    vi.spyOn(tab, "update").mockImplementation(() => outsider.focus());
-    findButton(row("TOK"), "Save").click();
-    await vi.waitFor(() => expect(plugin.store.updateCustomCurrency).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(document.activeElement).toBe(row("PTS").querySelector("input")));
-    const next = row("PTS").querySelector("input")!;
-    expect(next.selectionStart).toBe(1); expect(next.selectionEnd).toBe(2); expect(page.containerEl.isConnected).toBe(true);
-  });
-  it("preserves a neighboring currency draft while a save is pending and commits via its own Save", async () => {
-    const { row, plugin } = withCurrencies(); const saving = deferred<void>();
-    plugin.store.updateCustomCurrency.mockImplementationOnce(() => saving.promise);
-    findButton(row("TOK"), "Save").click();
-    changeInput(row("PTS").querySelector("input")!, "Draft");
-    saving.resolve();
-    await vi.waitFor(() => expect(Notice.messages).toContain("Custom currency saved"));
-    expect(row("PTS").querySelector("input")!.value).toBe("Draft");
-    findButton(row("PTS"), "Save").click();
-    await vi.waitFor(() => expect(plugin.store.updateCustomCurrency).toHaveBeenLastCalledWith("PTS", expect.objectContaining({ label: "Draft" })));
-  });
-  it("preserves newer typing into the same currency while its earlier Save is pending", async () => {
-    const { row, plugin } = withCurrencies(); const saving = deferred<void>();
-    plugin.store.updateCustomCurrency.mockImplementationOnce(() => saving.promise);
-    changeInput(row("TOK").querySelector("input")!, "First"); findButton(row("TOK"), "Save").click();
-    changeInput(row("TOK").querySelector("input")!, "Second"); saving.resolve();
-    await vi.waitFor(() => expect(Notice.messages).toContain("Custom currency saved"));
-    expect(row("TOK").querySelector("input")!.value).toBe("Second");
-    expect(plugin.store.updateCustomCurrency).toHaveBeenCalledWith("TOK", expect.objectContaining({ label: "First" }));
+  it("uses a native currency list and opens the shared Add/Edit form from its actions", async () => {
+    const plugin = createPlugin();
+    plugin.data.customCurrencies.push({ code: "TOK", label: "TOK", amountMarker: "¤", scale: 2, source: "custom" });
+    const { find, tab } = setup(plugin);
+    const update = vi.spyOn(tab, "update");
+    const list = find("Custom currencies").items![0];
+    expect(list.type).toBe("list"); expect(list.emptyState).toContain("No custom currencies");
+    expect(tab.containerEl.querySelector("input")).toBeNull();
+    list.addItem!.action();
+    const label = document.querySelector<HTMLInputElement>('input[aria-label="Currency label"]')!;
+    changeInput(label, "PTS"); findButton(document.body, "Add currency").click();
+    await vi.waitFor(() => expect(plugin.store.addCustomCurrency).toHaveBeenCalledWith({ label: "PTS", amountMarker: "", scale: 2 }));
+    await vi.waitFor(() => expect(label.isConnected).toBe(false));
+    list.items![0].action!();
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Currency label"]')!.value).toBe("TOK");
+    findButton(document.body, "Save").click();
+    await vi.waitFor(() => expect(plugin.store.updateCustomCurrency).toHaveBeenCalledWith("TOK", { label: "TOK", amountMarker: "¤", scale: 2 }));
+    expect(update).toHaveBeenCalledTimes(2);
   });
   it("publishes declarative controls, backup group and Custom currencies page", () => {
     const { find } = setup();
@@ -119,16 +109,6 @@ describe("SubscriptionSettingTab", () => {
     expect(button.textContent).toBe("Refresh all");
     plugin.data.settings.faviconProvider = "none"; tab.containerEl.empty();
     expect(render("Refresh all icons").disabled).toBe(true);
-  });
-  it("keeps Add/Save/Delete currency forms in their page and invokes their public buttons", async () => {
-    const { row, page, plugin } = withCurrencies();
-    expect(page.title).toBe("Custom currencies");
-    findButton(row("new"), "Add currency").click();
-    await vi.waitFor(() => expect(plugin.store.addCustomCurrency).toHaveBeenCalledWith({ label: "", amountMarker: "", scale: 2 }));
-    findButton(row("TOK"), "Save").click();
-    await vi.waitFor(() => expect(plugin.store.updateCustomCurrency).toHaveBeenCalledWith("TOK", { label: "TOK", amountMarker: "¤", scale: 2 }));
-    findButton(row("TOK"), "Delete").click();
-    await vi.waitFor(() => expect(plugin.store.deleteCustomCurrency).toHaveBeenCalledWith("TOK"));
   });
   it("waits for async export and reports failure without creating another download", async () => {
     const { render, plugin } = setup(); const exporting = deferred<string>(); plugin.exportBackupJson.mockImplementationOnce(() => exporting.promise);

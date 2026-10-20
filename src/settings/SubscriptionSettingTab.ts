@@ -3,39 +3,22 @@ import {
   Notice,
   PluginSettingTab,
   Setting,
-  SettingPage,
   type ButtonComponent,
   type SettingDefinitionItem,
 } from "obsidian";
 import type SubscriptionCalculatorPlugin from "../main";
+import { CustomCurrencyModal, getCurrencyPreviewAmount } from "./CustomCurrencyModal";
+import { openModalInDocument } from "../ui/components/openModalInDocument";
 import {
   getCurrencyAmountMarker,
   getCurrencySelectLabel,
 } from "../money/currencyDisplay";
 import type { CurrencyMeta, FaviconProvider, OpenMode, PluginSettings } from "../types";
 
-function createTextFragment(text: string): DocumentFragment {
-  const fragment = createFragment();
-  fragment.append(text);
-  return fragment;
-}
-
 function createDetachedFileInput(containerEl: HTMLElement): HTMLInputElement {
   const input = containerEl.createEl("input");
   input.remove();
   return input;
-}
-
-function getDecimalPlacesText(scale: number): string {
-  return `${scale} decimal place${scale === 1 ? "" : "s"}`;
-}
-
-function getPreviewAmountText(scale: number): string {
-  if (scale === 0) return "120";
-  if (scale === 1) return "19.9";
-  if (scale === 2) return "19.99";
-
-  return (0.01).toFixed(scale);
 }
 
 function backupFilename(): string {
@@ -226,12 +209,27 @@ export class SubscriptionSettingTab extends PluginSettingTab {
         type: "page",
         name: "Custom currencies",
         desc: "Create and manage currencies used by subscriptions.",
-        page: () =>
-          new CustomCurrenciesSettingsPage(this.plugin, () => {
-            this.update();
-          }),
+        items: [{
+          type: "list",
+          heading: "Saved currencies",
+          emptyState: "No custom currencies yet. Add a currency to track points, credits, or tokens.",
+          addItem: { name: "Add currency", action: () => this.openCurrencyEditor() },
+          items: this.plugin.data.customCurrencies.map((currency) => ({
+            name: getCurrencySelectLabel(currency),
+            desc: `${getCurrencyPreviewAmount(currency.scale)} ${getCurrencyAmountMarker(currency)}${
+              currency.isArchived ? " · Archived" : ""
+            }${this.plugin.store.isCurrencyUsed(currency.code) ? " · Used by subscriptions" : ""}`,
+            searchable: false,
+            action: () => this.openCurrencyEditor(currency),
+          })),
+        }],
       },
     ];
+  }
+
+  private openCurrencyEditor(currency?: CurrencyMeta): void {
+    openModalInDocument(() => new CustomCurrencyModal(this.app, this.plugin.store, () => this.update(), currency),
+      this.containerEl.ownerDocument, "currency-form");
   }
 
   private addRefreshAllIconsButton(setting: Setting): ButtonComponent {
@@ -300,249 +298,5 @@ export class SubscriptionSettingTab extends PluginSettingTab {
     } finally {
       button.setButtonText("Restore JSON").setDisabled(false);
     }
-  }
-}
-
-class CustomCurrenciesSettingsPage extends SettingPage {
-  title = "Custom currencies";
-  private readonly drafts = new Map<string, { label: string; amountMarker: string; scale: number }>();
-
-  constructor(
-    private readonly plugin: SubscriptionCalculatorPlugin,
-    private readonly refreshSettingsTab: () => void
-  ) {
-    super();
-  }
-
-  display(): void {
-    const restoreFocus = this.captureFocusedControl();
-    this.containerEl.empty();
-    this.renderCustomCurrencyForm(this.containerEl);
-
-    const customCurrencies = this.plugin.data.customCurrencies;
-    if (customCurrencies.length === 0) {
-      this.containerEl.createDiv({
-        cls: "subscription-calculator-settings-note",
-        text: "No custom currencies yet.",
-      });
-    } else {
-      for (const currency of customCurrencies) {
-        this.renderCustomCurrencyForm(this.containerEl, currency);
-      }
-    }
-    restoreFocus();
-  }
-
-  private captureFocusedControl(): () => void {
-    const active = this.containerEl.ownerDocument.activeElement;
-    const focusedRow = active?.closest("[data-currency-code]");
-    const focusedCode = focusedRow?.getAttribute("data-currency-code");
-    const focusedIndex = focusedRow && active
-      ? Array.from(focusedRow.querySelectorAll("input, button, select")).indexOf(active) : -1;
-    const selectionStart = active?.tagName === "INPUT" ? (active as HTMLInputElement).selectionStart : null;
-    const selectionEnd = active?.tagName === "INPUT" ? (active as HTMLInputElement).selectionEnd : null;
-    return () => {
-      if (!focusedCode) return;
-      const row = Array.from(this.containerEl.querySelectorAll<HTMLElement>("[data-currency-code]"))
-        .find((element) => element.getAttribute("data-currency-code") === focusedCode);
-      const control = row?.querySelectorAll<HTMLElement>("input, button, select")[focusedIndex];
-      control?.focus({ preventScroll: true });
-      if (control?.tagName === "INPUT" && selectionStart != null && selectionEnd != null) {
-        (control as HTMLInputElement).setSelectionRange(selectionStart, selectionEnd);
-      }
-    };
-  }
-
-  private refreshAfterCustomCurrencyChange(): void {
-    const restoreFocus = this.captureFocusedControl();
-    this.refreshSettingsTab();
-    this.display();
-    restoreFocus();
-  }
-
-  private renderCustomCurrencyForm(
-    containerEl: HTMLElement,
-    currency?: CurrencyMeta
-  ): void {
-    const isEdit = currency !== undefined;
-    const isUsed = currency ? this.plugin.store.isCurrencyUsed(currency.code) : false;
-    const wrapper = containerEl.createDiv({
-      cls: "subscription-calculator-currency-settings",
-    });
-    wrapper.setAttribute("data-currency-code", currency?.code ?? "new");
-    const title = wrapper.createDiv({
-      text: isEdit
-        ? `${getCurrencySelectLabel(currency)}${currency.isArchived ? " (archived)" : ""}`
-        : "Add custom currency",
-    });
-    title.addClass("subscription-calculator-currency-settings-title");
-
-    const draftKey = currency?.code ?? "new";
-    const draft = this.drafts.get(draftKey) ?? {
-      label: currency?.label ?? "",
-      amountMarker: currency?.amountMarker ?? "",
-      scale: currency?.scale ?? 2,
-    };
-    let { label, amountMarker, scale } = draft;
-    const rememberDraft = () => this.drafts.set(draftKey, { label, amountMarker, scale });
-    const originalScale = scale;
-    const hasAdvancedPrecision = isEdit && originalScale !== 0 && originalScale !== 2;
-
-    if (isEdit) {
-      const status = [
-        getDecimalPlacesText(currency.scale),
-        isUsed ? "used by subscriptions" : "unused",
-      ].join(" · ");
-      wrapper.createDiv({
-        cls: "subscription-calculator-settings-note",
-        text: status,
-      });
-    }
-
-    let updatePreview = () => undefined;
-
-    new Setting(wrapper)
-      .setName("Currency label")
-      .setDesc(
-        createTextFragment(
-          "Short name shown in currency lists. Examples: USD, CAD, CHF, TOK."
-        )
-      )
-      .addText((text) =>
-        text.setPlaceholder("TOK").setValue(label).onChange((value) => {
-          label = value;
-          rememberDraft();
-          updatePreview();
-        })
-      );
-    new Setting(wrapper)
-      .setName("Amount marker")
-      .setDesc(
-        createTextFragment(
-          "Optional. This is what appears next to the number: $ for USD, C$ for CAD, or emojis for a custom currency. Leave empty to use the currency label."
-        )
-      )
-      .addText((text) =>
-        text
-          .setPlaceholder("E.g. €, c$, emojis")
-          .setValue(amountMarker)
-          .onChange((value) => {
-            amountMarker = value;
-            rememberDraft();
-            updatePreview();
-          })
-      );
-    new Setting(wrapper)
-      .setName("With decimals")
-      .setDesc("Use cents-style prices, such as 19.99.")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(scale !== 0)
-          .setDisabled(isUsed)
-          .onChange((value) => {
-            scale = value ? 2 : 0;
-            rememberDraft();
-            updatePreview();
-          })
-      );
-    wrapper.createDiv({
-      cls: "subscription-calculator-settings-note",
-      text: isUsed
-        ? "Locked while this currency is used by subscriptions."
-        : hasAdvancedPrecision
-          ? `Advanced precision: ${getDecimalPlacesText(originalScale)}. Leave unchanged to keep it, or change this setting to use the MVP format.`
-          : "Turn this off for whole-number prices, such as points, credits, or tokens.",
-    });
-    const preview = wrapper.createDiv({
-      cls: "subscription-calculator-currency-preview",
-    });
-    updatePreview = () => {
-      const previewLabel = label.trim().toUpperCase() || "TOK";
-      const previewCurrency: CurrencyMeta = {
-        code: currency?.code ?? "CUSTOM_PREVIEW",
-        label: previewLabel,
-        amountMarker: amountMarker.trim() || undefined,
-        scale,
-        source: "custom",
-      };
-      const previewAmount = getPreviewAmountText(scale);
-      preview.empty();
-      preview.createDiv({
-        cls: "subscription-calculator-currency-preview-title",
-        text: "Preview",
-      });
-      const listRow = preview.createDiv({
-        cls: "subscription-calculator-currency-preview-row",
-      });
-      listRow.createSpan({
-        cls: "subscription-calculator-currency-preview-label",
-        text: "Currency list",
-      });
-      listRow.createSpan({
-        cls: "subscription-calculator-currency-preview-value",
-        text: getCurrencySelectLabel(previewCurrency),
-      });
-      const amountRow = preview.createDiv({
-        cls: "subscription-calculator-currency-preview-row",
-      });
-      amountRow.createSpan({
-        cls: "subscription-calculator-currency-preview-label",
-        text: "Amount",
-      });
-      amountRow.createSpan({
-        cls: "subscription-calculator-currency-preview-value",
-        text: `${previewAmount} ${getCurrencyAmountMarker(previewCurrency)}`,
-      });
-    };
-    updatePreview();
-
-    const action = new Setting(wrapper);
-    if (isEdit) {
-      action.addButton((button) =>
-        button.setButtonText("Save").setCta().onClick(async () => {
-          const submittedDraft = this.drafts.get(draftKey);
-          try {
-            await this.plugin.store.updateCustomCurrency(currency.code, {
-              label,
-              amountMarker,
-              scale,
-            });
-            new Notice("Custom currency saved");
-            if (this.drafts.get(draftKey) === submittedDraft) this.drafts.delete(draftKey);
-            this.refreshAfterCustomCurrencyChange();
-          } catch (error) {
-            new Notice(error instanceof Error ? error.message : "Failed to save currency");
-          }
-        })
-      );
-      action.addButton((button) => {
-        button.buttonEl.addClass("mod-warning");
-        button.setButtonText(isUsed ? "Archive" : "Delete").onClick(async () => {
-          try {
-            await this.plugin.store.deleteCustomCurrency(currency.code);
-            new Notice(isUsed ? "Currency archived" : "Currency deleted");
-            this.drafts.delete(draftKey);
-            this.refreshAfterCustomCurrencyChange();
-          } catch (error) {
-            new Notice(error instanceof Error ? error.message : "Failed to remove currency");
-          }
-        });
-      });
-      return;
-    }
-
-    action.addButton((button) =>
-      button.setButtonText("Add currency").setCta().onClick(async () => {
-        const submittedDraft = this.drafts.get(draftKey);
-        try {
-          await this.plugin.store.addCustomCurrency({ label, amountMarker, scale });
-          new Notice("Custom currency added");
-          if (this.drafts.get(draftKey) === submittedDraft) this.drafts.delete(draftKey);
-          this.refreshAfterCustomCurrencyChange();
-        } catch (error) {
-          new Notice(error instanceof Error ? error.message : "Failed to add currency");
-        }
-      })
-    );
   }
 }

@@ -8,7 +8,7 @@ import type { BillingPeriod } from "../types";
 import { createSubscriptionStatusSetting } from "./components/FormControls";
 import { parseMoneyInput } from "../money/parseMoneyInput";
 import { isValidCustomPeriodDays } from "../data/subscriptionCommands";
-import { FormFieldFeedback } from "./components/FormFieldFeedback";
+import { FormFieldFeedback, focusFirstInvalid } from "./components/FormFieldFeedback";
 import { SubscriptionDetailsFields, type SubscriptionIconContext } from "./components/SubscriptionDetailsFields";
 
 export class AddSubscriptionModal extends UnsavedChangesModal {
@@ -90,6 +90,7 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
           if (this.submitted) this.validateFinancialFields();
           customDaysSetting.settingEl.hidden = this.billingPeriod !== "custom";
           customDaysSetting.settingEl.style.setProperty("display", this.billingPeriod === "custom" ? "" : "none");
+          this.daysFeedback?.input.toggleAttribute("data-unsaved-ignore", this.billingPeriod !== "custom");
         });
     });
 
@@ -105,6 +106,7 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
       text.inputEl.max = String(MAX_CUSTOM_BILLING_PERIOD_DAYS);
       text.inputEl.step = "1";
       this.daysFeedback = new FormFieldFeedback(text.inputEl, "Custom period days");
+      text.inputEl.toggleAttribute("data-unsaved-ignore", this.billingPeriod !== "custom");
     });
     customDaysSetting.settingEl.addClass("subscription-calculator-days-setting");
     customDaysSetting.settingEl.hidden = this.billingPeriod !== "custom";
@@ -139,10 +141,11 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
     const detailsValid = this.fields.validate();
     const financialValid = this.validateFinancialFields();
     if (!detailsValid || !financialValid) {
-      this.contentEl.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus();
+      focusFirstInvalid(this.contentEl);
       return;
     }
     this.submitting = true;
+    this.setFormBusy(true);
     this.addButton?.setDisabled(true);
     this.fields.setBusy(true);
     try {
@@ -160,6 +163,7 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
       new Notice(e instanceof Error ? e.message : "Failed to add subscription");
     } finally {
       this.submitting = false;
+      this.setFormBusy(false);
       this.addButton?.setDisabled(false);
       this.fields.setBusy(false);
     }

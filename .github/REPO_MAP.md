@@ -28,10 +28,10 @@ src/
 │   ├── parseMoneyInput.ts          Money input parsing
 │   └── totals.ts                   Subscription total calculations
 ├── settings/
-│   └── SubscriptionSettingTab.ts   Obsidian settings UI
+│   ├── SubscriptionSettingTab.ts   Native settings and currency list
+│   └── CustomCurrencyModal.ts      Shared currency editor and removal confirmation
 └── ui/
     ├── AddSubscriptionModal.ts     Add-subscription dialog
-    ├── ConfirmDeleteModal.ts       Delete confirmation dialog
     ├── EditSubscriptionModal.ts    Edit-subscription dialog
     ├── SubscriptionsView.ts        Main subscriptions view
     ├── subscriptionSort.ts         Subscription sorting
@@ -40,6 +40,8 @@ src/
         ├── SubscriptionDetailsFields.ts  Shared Add/Edit draft and detail controls
         ├── SubscriptionIcon.ts        Shared card, table and form icon rendering
         ├── FormFieldFeedback.ts       Accessible labels and inline validation
+        ├── UnsavedChangesModal.ts     Shared dirty-form dismissal and confirmations
+        ├── openModalInDocument.ts     Source-window dialogs and duplicate-open guard
         ├── FormControls.ts
         ├── SubscriptionCard.ts
         ├── SubscriptionSummaryTable.ts

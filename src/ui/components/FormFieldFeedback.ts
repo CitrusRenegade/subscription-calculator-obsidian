@@ -1,5 +1,10 @@
 let nextFieldId = 0;
 
+/** Focus errors in visual DOM order, including fields owned by different sections. */
+export function focusFirstInvalid(container: HTMLElement): void {
+  container.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus();
+}
+
 /** Keeps an input's accessible label and inline error in sync. */
 export class FormFieldFeedback {
   readonly errorEl: HTMLElement;

@@ -1,4 +1,5 @@
 import { UnsavedChangesModal } from "./components/UnsavedChangesModal";
+import { focusFirstInvalid } from "./components/FormFieldFeedback";
 import { App, Notice, ButtonComponent } from "obsidian";
 import type { SubscriptionStore } from "../data/SubscriptionStore";
 import type { CurrencyRegistry } from "../money/CurrencyRegistry";
@@ -46,21 +47,29 @@ export class EditSubscriptionModal extends UnsavedChangesModal {
 
   private async runAction(action: "save" | "refresh"): Promise<void> {
     if (this.busy || (action === "refresh" && !this.fields.canRefresh())) return;
-    if (action === "save" && !this.fields.validate()) { this.fields.focusInvalid(); return; }
+    if (action === "save" && !this.fields.validate()) { focusFirstInvalid(this.contentEl); return; }
     this.busy = true;
+    if (action === "save") this.setFormBusy(true);
     this.fields.setBusy(true);
     this.saveButton?.setDisabled(true);
     try {
       if (action === "save") {
-        await this.store.updateSubscription(this.item.id, this.fields.getPatch());
-        if (this.enabled !== this.initialEnabled) {
-          await this.store.setSubscriptionEnabled(this.item.id, this.enabled);
-        }
+        await this.store.updateSubscription(this.item.id, {
+          ...this.fields.getPatch(),
+          ...(this.enabled !== this.initialEnabled ? { status: this.enabled ? "enabled" as const : "disabled" as const } : {}),
+        });
         this.closeAfterSave();
       } else {
         this.fields.setRefreshResult("Refreshing…");
         const refreshed = await this.store.refreshIcon(this.item.id);
-        const snapshot = refreshed ? await this.store.readSnapshot() : null;
+        let snapshot;
+        if (refreshed) {
+          try { snapshot = await this.store.readSnapshot(); }
+          catch {
+            this.fields.setRefreshResult("Icon refreshed, but the preview could not be updated. Reopen this form to see it.");
+            return;
+          }
+        }
         this.fields.setRefreshResult(
           refreshed ? "Icon refreshed" : "Could not load the website icon. Try again.",
           snapshot?.data.subscriptions.find((item) => item.id === this.item.id)
@@ -71,6 +80,7 @@ export class EditSubscriptionModal extends UnsavedChangesModal {
       else new Notice(e instanceof Error ? e.message : "Failed to save subscription");
     } finally {
       this.busy = false;
+      this.setFormBusy(false);
       this.fields.setBusy(false);
       this.saveButton?.setDisabled(false);
     }

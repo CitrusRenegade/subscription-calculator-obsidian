@@ -14,6 +14,28 @@ const { pendingReleases, jobs, fixture } = storeTest();
 const today = () => formatLocalDate(new Date());
 
 describe("subscription command status races", () => {
+  it.each([{ priceText: "invalid" }, { startDate: "invalid" }])("does not cancel an earlier CLI status when a form patch is invalid: %j", async (invalid) => {
+    const gate = primaryGate(pendingReleases);
+    const { store, data } = fixture(buildData(), gate.save);
+    const blocker = ownStoreJob(jobs, store.updateSubscription("ab1", { name: "Blocking" }));
+    await gate.started;
+    const cli = ownStoreJob(jobs, store.setSubscription("ab1", { status: "disabled" }));
+    const form = ownStoreJob(jobs, store.updateSubscription("ab1", { ...invalid, status: "enabled" }));
+    gate.open(); await blocker;
+    expect(await cli).toMatchObject({ persistedStatus: "disabled", changed: true });
+    await expect(form).rejects.toThrow();
+    expect(data.subscriptions[0].status).toBe("disabled");
+  });
+  it("applies a CLI status issued after a queued form save", async () => {
+    const gate = primaryGate(pendingReleases);
+    const { store, data } = fixture(buildData(), gate.save);
+    const blocker = ownStoreJob(jobs, store.updateSubscription("ab1", { name: "Blocking" }));
+    await gate.started;
+    const form = ownStoreJob(jobs, store.updateSubscription("ab1", { name: "Saved", status: "disabled" }));
+    const cli = ownStoreJob(jobs, store.setSubscription("ab1", { status: "enabled" }));
+    gate.open(); await blocker; await form; await cli;
+    expect(data.subscriptions[0]).toMatchObject({ name: "Saved", status: "enabled" });
+  });
 
   it("keeps the pending disable and its original deadline across a successful fields-only set", async () => {
     const { delays, fire } = useRecordedTimers();

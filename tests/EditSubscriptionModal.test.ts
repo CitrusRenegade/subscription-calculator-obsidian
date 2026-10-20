@@ -18,6 +18,38 @@ function emoji(modal: EditSubscriptionModal) { return modal.contentEl.querySelec
 describe("EditSubscriptionModal", () => {
   beforeEach(resetObsidianDom);
   afterEach(() => vi.restoreAllMocks());
+  it("locks every editable field while Save is pending and unlocks on failure", async () => {
+    const gate = deferred<void>();
+    const modal = openModal({ updateSubscription: vi.fn(() => gate.promise) });
+    findButton(modal.contentEl, "Save").click();
+    const controls = Array.from(modal.contentEl.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select"));
+    expect(controls.every(control => control.disabled)).toBe(true);
+    gate.reject(new Error("disk full"));
+    await vi.waitFor(() => expect(controls.every(control => !control.disabled)).toBe(true));
+  });
+  it("does not validate a partially typed URL before the first Save", () => {
+    const modal = openModal();
+    const url = findSetting(modal.contentEl, "Service URL").texts[0].inputEl;
+    changeInput(url, "https://");
+    expect(url.getAttribute("aria-invalid")).not.toBe("true");
+  });
+  it("keeps a successful refresh result visible even if the provider changes while pending", async () => {
+    const gate = deferred<boolean>();
+    let provider: "google-s2" | "none" = "google-s2";
+    const modal = new EditSubscriptionModal(new App() as unknown as ObsidianApp,
+      { refreshIcon: () => gate.promise, readSnapshot: async () => ({ data: { subscriptions: [item] } }) } as unknown as SubscriptionStore,
+      new BuiltinCurrencyRegistry(), item, { iconService: { getCachedIcon: () => null }, getProvider: () => provider });
+    modal.open(); findButton(modal.contentEl, "Refresh icon").click();
+    provider = "none"; gate.resolve(true);
+    await vi.waitFor(() => expect(modal.contentEl.textContent).toContain("Icon refreshed"));
+    const status = modal.contentEl.querySelector<HTMLElement>('[role="status"]')!;
+    expect(status.hidden).toBe(false); expect(status.parentElement!.hidden).toBe(false);
+  });
+  it("reports refreshed cache separately from failure to read the updated snapshot", async () => {
+    const modal = openModal({ refreshIcon: vi.fn().mockResolvedValue(true), readSnapshot: vi.fn().mockRejectedValue(new Error("read failed")) });
+    findButton(modal.contentEl, "Refresh icon").click();
+    await vi.waitFor(() => expect(modal.contentEl.textContent).toContain("Icon refreshed, but the preview could not be updated. Reopen this form to see it."));
+  });
   it("keeps status changes as a draft until Save and discards them on Cancel", async () => {
     const updateSubscription = vi.fn().mockResolvedValue(undefined);
     const setSubscriptionEnabled = vi.fn().mockResolvedValue(undefined);
@@ -31,7 +63,8 @@ describe("EditSubscriptionModal", () => {
     const saved = openModal({ updateSubscription, setSubscriptionEnabled });
     saved.contentEl.querySelector<HTMLInputElement>('input[aria-label="Enable subscription"]')!.click();
     findButton(saved.contentEl, "Save").click();
-    await vi.waitFor(() => expect(setSubscriptionEnabled).toHaveBeenCalledWith("spotify", false));
+    await vi.waitFor(() => expect(updateSubscription).toHaveBeenCalledWith("spotify", expect.objectContaining({ status: "disabled" })));
+    expect(setSubscriptionEnabled).not.toHaveBeenCalled();
     expect(saved.contentEl.isConnected).toBe(false);
   });
   it("previews modes, retains emoji drafts and shows Refresh only for a saved website icon", () => {

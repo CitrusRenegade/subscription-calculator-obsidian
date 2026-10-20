@@ -20,6 +20,7 @@ function appendElement(parent: Node, tag: string, options: ElementOptions = {}):
     case "a": fragment = range.createContextualFragment("<a></a>"); break;
     case "iframe": fragment = range.createContextualFragment("<iframe></iframe>"); break;
     case "img": fragment = range.createContextualFragment("<img>"); break;
+    case "output": fragment = range.createContextualFragment("<output></output>"); break;
     default: throw new Error(`Unsupported DOM tag: ${tag}`);
   }
   const element = fragment.firstElementChild as HTMLElement;
@@ -50,6 +51,7 @@ export function installObsidianDomHelpers(owner: Window = window): void {
   installBuilders(constructors.DocumentFragment.prototype);
 }
 installObsidianDomHelpers();
+Object.assign(window, { activeWindow: window, activeDocument: document });
 Object.defineProperty(window, "createFragment", { configurable: true, value: () => document.createRange().createContextualFragment("") });
 
 function mount(doc: Document): HTMLDivElement { return appendElement(doc.body, "div") as HTMLDivElement; }
@@ -83,6 +85,7 @@ export class Scope {
   register(_modifiers: string[], _key: string, _callback: (event: KeyboardEvent) => boolean): void {}
 }
 export class Modal {
+  private closeCallback?: () => void;
   scope = new Scope();
   readonly contentEl: HTMLDivElement;
   isClosed = false;
@@ -91,7 +94,9 @@ export class Modal {
   constructor(readonly app: App) { this.contentEl = mount(app.document); }
   open(): void { this.isClosed = false; this.onOpen(); }
   onOpen(): void {}
-  close(): void { this.isClosed = true; this.contentEl.remove(); }
+  onClose(): void {}
+  setCloseCallback(callback: () => void): this { this.closeCallback = callback; return this; }
+  close(): void { this.isClosed = true; this.contentEl.remove(); this.onClose(); this.closeCallback?.(); }
 }
 export class Notice {
   static readonly messages: string[] = [];

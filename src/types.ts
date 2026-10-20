@@ -93,6 +93,7 @@ export interface AddSubscriptionInput {
 }
 
 export interface UpdateSubscriptionInput {
+  status?: SubscriptionStatus;
   name?: string;
   priceText?: string;
   currencyCode?: string;

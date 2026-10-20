@@ -766,52 +766,6 @@
   font-size: var(--font-ui-small);
 }
 
-.subscription-calculator-currency-settings {
-  margin-block: 8px 14px;
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: 8px;
-}
-
-.subscription-calculator-currency-settings-title {
-  margin: 0 0 4px;
-  font-size: var(--font-ui-medium);
-}
-
-.subscription-calculator-currency-preview {
-  display: grid;
-  gap: 6px;
-  margin-block: 12px 4px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-secondary);
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  padding: 8px 10px;
-}
-
-.subscription-calculator-currency-preview-title {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-weight: var(--font-semibold);
-}
-
-.subscription-calculator-currency-preview-row {
-  display: grid;
-  grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
-}
-
-.subscription-calculator-currency-preview-label {
-  color: var(--text-muted);
-}
-
-.subscription-calculator-currency-preview-value {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-
 @container (max-width: 520px) {
   .subscription-calculator-money-input,
   .subscription-calculator-select,
@@ -881,6 +835,7 @@
 /* Shared form composition: related payment fields pair up, details span the form. */
 .subscription-calculator-form-grid {
   display: grid;
+  align-items: start;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px 16px;
 }
@@ -903,7 +858,7 @@
   width: 100%;
 }
 
-.subscription-calculator-modal .subscription-calculator-add-form > .subscription-calculator-half-field,
+.subscription-calculator-modal .subscription-calculator-form-grid > .subscription-calculator-half-field,
 .subscription-calculator-modal .subscription-calculator-add-form > .subscription-calculator-date-setting {
   grid-column: auto;
 }
@@ -926,4 +881,36 @@
   .subscription-calculator-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.subscription-calculator-currency-modal .subscription-calculator-currency-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 20px;
+  padding: 12px 0;
+  border-block: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+  background: transparent;
+}
+
+.subscription-calculator-currency-preview > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.subscription-calculator-currency-modal output {
+  font-size: var(--font-ui-large);
+}
+
+.subscription-calculator-modal-actions .subscription-calculator-currency-remove {
+  margin-inline-end: auto;
+  color: var(--text-muted);
+}
+
+.subscription-calculator-currency-modal .subscription-calculator-modal-actions {
+  flex-wrap: wrap;
 }

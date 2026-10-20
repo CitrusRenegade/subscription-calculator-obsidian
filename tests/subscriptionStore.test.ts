@@ -19,6 +19,53 @@ function createStore(
 }
 
 describe("subscription store", () => {
+  it("keeps a newer card toggle authoritative over a queued form status save", async () => {
+    stubWindowTimers();
+    const saves = saveGate(pendingReleases, 2);
+    const data = createDefaultData();
+    const store = createStore(data, saves.save);
+    await store.addSubscription({ name: "Before", priceText: "12", currencyCode: "USD", billingPeriod: "monthly" });
+    const id = data.subscriptions[0].id;
+    const blocker = ownStoreJob(jobs, store.updateSubscription(id, { name: "Blocking" }));
+    await saves.started;
+    const formSave = ownStoreJob(jobs, store.updateSubscription(id, { name: "After", status: "enabled" }));
+    await store.setSubscriptionEnabled(id, false);
+    saves.open(); await blocker; await formSave;
+    expect(data.subscriptions[0].name).toBe("After");
+    expect(store.getEnabledSubscriptions()).toHaveLength(0);
+    await store.flushDisableGracePeriods();
+    expect(data.subscriptions[0].status).toBe("disabled");
+  });
+  it("saves edited details and status atomically and rolls both back on failure", async () => {
+    const data = createDefaultData();
+    const save = vi.fn(async () => undefined);
+    const store = createStore(data, save);
+    await store.addSubscription({ name: "Before", priceText: "12", currencyCode: "USD", billingPeriod: "monthly" });
+    const id = data.subscriptions[0].id;
+    save.mockRejectedValueOnce(new Error("disk full"));
+    await expect(store.updateSubscription(id, { name: "After", status: "disabled" })).rejects.toThrow("disk full");
+    expect(data.subscriptions[0]).toMatchObject({ name: "Before", status: "enabled" });
+    save.mockClear();
+    await store.updateSubscription(id, { name: "After", status: "disabled" });
+    expect(data.subscriptions[0]).toMatchObject({ name: "After", status: "disabled" });
+    expect(store.getEnabledSubscriptions()).toHaveLength(0);
+    expect(save).toHaveBeenCalledOnce();
+  });
+  it("restores a consumed disable intent when an atomic form save fails", async () => {
+    stubWindowTimers();
+    const data = createDefaultData();
+    const save = vi.fn(async () => undefined);
+    const store = createStore(data, save);
+    await store.addSubscription({ name: "Before", priceText: "12", currencyCode: "USD", billingPeriod: "monthly" });
+    const id = data.subscriptions[0].id;
+    await store.setSubscriptionEnabled(id, false);
+    save.mockRejectedValueOnce(new Error("disk full"));
+    await expect(store.updateSubscription(id, { name: "After", status: "enabled" })).rejects.toThrow("disk full");
+    expect(store.getEnabledSubscriptions()).toHaveLength(0);
+    expect(data.subscriptions[0]).toMatchObject({ name: "Before", status: "enabled" });
+    await store.flushDisableGracePeriods();
+    expect(data.subscriptions[0].status).toBe("disabled");
+  });
   it("can create disabled subscriptions that are excluded from totals", async () => {
     const data = createDefaultData();
     const store = createStore(data);
