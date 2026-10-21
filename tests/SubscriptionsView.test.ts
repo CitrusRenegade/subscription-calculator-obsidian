@@ -80,6 +80,52 @@ describe("SubscriptionsView interaction continuity with actual cards", () => {
     expect(store.updateSubscription).not.toHaveBeenCalled();
   });
 
+  it("suppresses the teardown blur Chromium fires from a still-connected editor", async () => {
+    const { view, container, store, notify } = setup();
+    await open(view);
+    const input = beginPrice(container, "B");
+    input.value = "123.45";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    // Chromium dispatches blur from inside removeChild, before the removed editor
+    // is disconnected, so the editor's detached check cannot ignore it; committing
+    // from that blur ping-pongs with the re-render. Mimic the timing.
+    const body = container.querySelector<HTMLElement>(".subscription-calculator-view-body")!;
+    const realEmpty = body.empty.bind(body);
+    vi.spyOn(body, "empty").mockImplementation(function (this: HTMLElement) {
+      input.dispatchEvent(new FocusEvent("blur"));
+      return realEmpty();
+    });
+    notify();
+    expect(store.updateSubscription).not.toHaveBeenCalled();
+    const restored = price(container, "B");
+    expect(document.activeElement).toBe(restored);
+    expect(restored.value).toBe("123.45");
+    expect(restored.hidden).toBe(false);
+    // The suppression is scoped to the teardown: an ordinary blur afterwards
+    // still commits the draft exactly once.
+    restored.dispatchEvent(new FocusEvent("blur"));
+    expect(store.updateSubscription).toHaveBeenCalledExactlyOnceWith(
+      expect.any(String),
+      expect.objectContaining({ priceText: "123.45" })
+    );
+  });
+
+  it("never reads selection APIs of the number price editor during a re-render", async () => {
+    const { view, container, notify } = setup();
+    await open(view);
+    const selectionEnd = vi.spyOn(HTMLInputElement.prototype, "selectionEnd", "get");
+    const input = beginPrice(container, "B");
+    input.value = "123.45";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    selectionEnd.mockClear();
+    notify();
+    expect(selectionEnd).not.toHaveBeenCalled();
+    const restored = price(container, "B");
+    expect(document.activeElement).toBe(restored);
+    expect(restored.value).toBe("123.45");
+    expect(restored.hidden).toBe(false);
+  });
+
   it("keeps keyboard position after a save and skips same-day focus refresh", async () => {
     const { view, container, notify } = setup();
     await open(view);

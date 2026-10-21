@@ -132,7 +132,7 @@ export class SubscriptionsView extends ItemView {
       floatingSummaryPosition
     );
     const previousScrollTop = container.scrollTop;
-    body.empty();
+    this.suppressTeardownBlurs(body, () => body.empty());
     updateFloatingSummary(
       floatingSummary,
       totals,
@@ -269,6 +269,23 @@ export class SubscriptionsView extends ItemView {
     this.scheduleFloatingSummaryUpdate();
   }
 
+  /**
+   * Chromium fires blur synchronously while a focused editor is being removed,
+   * and does so before the node is disconnected, so a detached check in a blur
+   * handler cannot recognize teardown. Committing from that blur re-renders and
+   * re-commits in a loop, so blurs raised by the view's own DOM teardown are
+   * swallowed for the duration of the removal.
+   */
+  private suppressTeardownBlurs(container: HTMLElement, teardown: () => void): void {
+    const suppress = (event: Event) => event.stopPropagation();
+    container.addEventListener("blur", suppress, true);
+    try {
+      teardown();
+    } finally {
+      container.removeEventListener("blur", suppress, true);
+    }
+  }
+
   private captureFocusedControl(): () => void {
     const container = this.contentEl;
     const active = container.ownerDocument.activeElement;
@@ -281,8 +298,15 @@ export class SubscriptionsView extends ItemView {
     const activeInput = active.tagName === "INPUT" ? (active as HTMLInputElement) : null;
     const draft = activeInput && !activeInput.hidden ? activeInput.value : null;
     const isPriceEditor = active.matches(".subscription-calculator-money-input");
-    const selectionStart = draft === null ? null : activeInput?.selectionStart ?? null;
-    const selectionEnd = draft === null ? null : activeInput?.selectionEnd ?? null;
+    // Number inputs expose no editable selection (their selection APIs report
+    // null), so price editors restore value+focus with the caret at the end
+    // instead of preserving a selection. An earlier hang seen here was caused by
+    // a blur listener running synchronously inside removeChild during teardown,
+    // not by reading selection state; that blur is now suppressed during re-renders.
+    const selectionStart =
+      draft === null || isPriceEditor ? null : activeInput?.selectionStart ?? null;
+    const selectionEnd =
+      draft === null || isPriceEditor ? null : activeInput?.selectionEnd ?? null;
     return () => {
       const nextCard = Array.from(container.querySelectorAll<HTMLElement>("[data-subscription-id]"))
         .find((element) => element.getAttribute("data-subscription-id") === subscriptionId);
@@ -358,7 +382,7 @@ export class SubscriptionsView extends ItemView {
       return { body, floatingSummary };
     }
 
-    container.empty();
+    this.suppressTeardownBlurs(container, () => container.empty());
     container.addClass("subscription-calculator-view");
     const nextOverlayHost = container.createDiv({
       cls: ["subscription-calculator-summary-overlay", `is-${position}`],

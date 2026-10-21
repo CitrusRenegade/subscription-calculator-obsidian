@@ -97,7 +97,12 @@ export function createMoneyInput(
   renderDisplay();
   updateWidth();
   input.addEventListener("input", updateWidth);
-  input.addEventListener("blur", finishEditing);
+  input.addEventListener("blur", () => {
+    // Removing a focused editor fires blur in Chromium; committing from that blur
+    // ping-pongs with the re-render (commit -> notify -> render -> detach -> blur).
+    if (!input.isConnected) return;
+    finishEditing();
+  });
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -109,6 +114,9 @@ export function createMoneyInput(
     display.hidden = true;
     input.hidden = false;
     input.focus();
+    // Typing must replace the shown price, not splice into it: number inputs keep
+    // the caret at the text start, so an unselected value turns "13.5" into "1355.00".
+    input.select();
   });
   return input;
 }

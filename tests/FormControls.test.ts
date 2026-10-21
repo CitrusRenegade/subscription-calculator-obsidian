@@ -90,4 +90,29 @@ describe("card form controls in a DOM", () => {
     expect(commit).toHaveBeenCalledExactlyOnceWith("12.50");
     expect(input.hidden).toBe(true);
   });
+
+  it("does not commit when the open editor is detached by a re-render", () => {
+    const { container, registry } = setup();
+    const commit = vi.fn();
+    const input = createMoneyInput(container, { amountMinor: 1000, currencyCode: "USD" }, registry, commit);
+    container.querySelector<HTMLButtonElement>("button")!.click();
+    input.value = "99.99";
+    // Removing the focused editor fires blur in Chromium; committing from it would
+    // ping-pong with the re-render (commit -> notify -> render -> detach -> blur).
+    input.remove();
+    input.dispatchEvent(new FocusEvent("blur"));
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("selects the existing value when the editor opens so typing replaces it", () => {
+    const { container, registry } = setup();
+    const selectSpy = vi.spyOn(HTMLInputElement.prototype, "select");
+    try {
+      createMoneyInput(container, { amountMinor: 1999, currencyCode: "USD" }, registry, vi.fn(), "Price for Netflix");
+      container.querySelector<HTMLButtonElement>("button")!.click();
+      expect(selectSpy).toHaveBeenCalledExactlyOnceWith();
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
 });
