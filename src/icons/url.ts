@@ -1,4 +1,22 @@
-export function normalizeUrlInput(value: string | undefined): string | undefined {
+/**
+ * Typing reparses the same address several times per update pass, so pure URL
+ * results are memoized per raw value with a small FIFO bound. Stale reuse is
+ * impossible: every cached result is a pure function of its input.
+ */
+function withBoundedMemo<T>(parse: (value: string | undefined) => T, limit = 32): (value: string | undefined) => T {
+  const cache = new Map<string, T>();
+  return (value) => {
+    const key = value ?? "";
+    if (!cache.has(key)) {
+      const result = parse(value);
+      if (cache.size >= limit) cache.delete(cache.keys().next().value!);
+      cache.set(key, result);
+    }
+    return cache.get(key)!;
+  };
+}
+
+export const normalizeUrlInput = withBoundedMemo(function normalizeUrlInput(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
   try {
@@ -9,9 +27,9 @@ export function normalizeUrlInput(value: string | undefined): string | undefined
   } catch {
     return trimmed;
   }
-}
+});
 
-export function getOpenableServiceUrl(value: string | undefined): string | undefined {
+export const getOpenableServiceUrl = withBoundedMemo(function getOpenableServiceUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
 
@@ -35,7 +53,7 @@ export function getOpenableServiceUrl(value: string | undefined): string | undef
   } catch {
     return undefined;
   }
-}
+});
 
 export function getDomainFromUrl(value: string | undefined): string | null {
   const normalized = normalizeUrlInput(value);

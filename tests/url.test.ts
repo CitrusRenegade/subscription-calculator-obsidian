@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getOpenableServiceUrl } from "../src/icons/url";
+import { getOpenableServiceUrl, normalizeUrlInput } from "../src/icons/url";
 
 describe("openable service URLs", () => {
   it.each([
@@ -12,5 +12,16 @@ describe("openable service URLs", () => {
     ["a mailto URL", "mailto:hello@example.com", undefined],
   ])("returns an openable URL for %s", (description, input, expected) => {
     expect(getOpenableServiceUrl(input)).toBe(expected);
+  });
+  it("returns stable results for repeated, alternating and undefined inputs", () => {
+    expect(getOpenableServiceUrl("example.com")).toBe("https://example.com/");
+    expect(getOpenableServiceUrl("example.com/path")).toBe("https://example.com/path");
+    expect(getOpenableServiceUrl("example.com")).toBe("https://example.com/");
+    expect(getOpenableServiceUrl(undefined)).toBeUndefined();
+    expect(getOpenableServiceUrl(undefined)).toBeUndefined();
+    expect(getOpenableServiceUrl("bad host with space")).toBeUndefined();
+    expect(getOpenableServiceUrl("example.com")).toBe("https://example.com/");
+    expect(normalizeUrlInput("example.com")).toBe("https://example.com/");
+    expect(normalizeUrlInput("example.com:443")).toBe("https://example.com/");
   });
 });

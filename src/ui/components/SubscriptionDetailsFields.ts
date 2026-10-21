@@ -3,17 +3,31 @@ import { parseDateOnly } from "../../date/dateOnly";
 import { getOpenableServiceUrl, normalizeUrlInput } from "../../icons/url";
 import type { IconService } from "../../icons/IconService";
 import type { CurrencyRegistry } from "../../money/CurrencyRegistry";
-import type { FaviconProvider, IconMode, SubscriptionItem } from "../../types";
+import type { CachedIcon, FaviconProvider, IconMode, SubscriptionItem } from "../../types";
 import { FormFieldFeedback } from "./FormFieldFeedback";
 import { renderSubscriptionIcon } from "./SubscriptionIcon";
+import type { OperationBusyTarget } from "./UnsavedChangesModal";
 
 export interface SubscriptionIconContext {
   iconService: Pick<IconService, "getCachedIcon">;
   getProvider: () => FaviconProvider;
 }
 
+/** Everything the preview DOM depends on; the cached icon is compared by identity. */
+interface RenderedPreview {
+  mode: IconMode;
+  emoji: string;
+  currencyCode: string;
+  cached: CachedIcon | null;
+}
+
+function isSamePreviewRender(before: RenderedPreview | null, after: RenderedPreview): boolean {
+  return !!before && before.mode === after.mode && before.emoji === after.emoji &&
+    before.currencyCode === after.currencyCode && before.cached === after.cached;
+}
+
 /** Shared draft, validation and preview; persistence belongs to the dialog/store. */
-export class SubscriptionDetailsFields {
+export class SubscriptionDetailsFields implements OperationBusyTarget {
   name: string;
   serviceUrl: string;
   startDate: string;
@@ -30,6 +44,7 @@ export class SubscriptionDetailsFields {
   private feedback: Partial<Record<"name" | "date" | "url" | "emoji", FormFieldFeedback>> = {};
   private submitted = false;
   private busy = false;
+  private renderedPreview: RenderedPreview | null = null;
 
   constructor(
     private readonly registry: CurrencyRegistry,
@@ -145,6 +160,7 @@ export class SubscriptionDetailsFields {
   }
 
   setCurrencyCode(code: string): void { this.currencyCode = code; this.updateIconState(); }
+  /** Freezes icon refresh while any operation runs; release re-derives availability. */
   setBusy(busy: boolean): void {
     this.busy = busy;
     this.refreshButton?.setDisabled(busy || !this.canRefresh());
@@ -170,17 +186,26 @@ export class SubscriptionDetailsFields {
     }
     const sameUrl = normalizeUrlInput(this.serviceUrl) === normalizeUrlInput(this.savedItem?.serviceUrl);
     if (this.preview) {
-      this.preview.empty();
-      if (visible && !this.emoji.trim()) this.preview.setText("…");
-      else {
-        const previewItem: SubscriptionItem = {
-          id: "", name: this.name, status: "enabled", billingPeriod: "monthly",
-          price: { amountMinor: 0, currencyCode: this.currencyCode },
-          icon: { mode: this.iconMode, emoji: this.emoji,
-            cacheKey: sameUrl ? this.savedItem?.icon.cacheKey : undefined },
-          createdOn: "", updatedOn: "",
-        };
-        renderSubscriptionIcon(this.preview, previewItem, this.icons.iconService, this.registry);
+      const previewItem: SubscriptionItem = {
+        id: "", name: this.name, status: "enabled", billingPeriod: "monthly",
+        price: { amountMinor: 0, currencyCode: this.currencyCode },
+        icon: { mode: this.iconMode, emoji: this.emoji,
+          cacheKey: sameUrl ? this.savedItem?.icon.cacheKey : undefined },
+        createdOn: "", updatedOn: "",
+      };
+      // Typing usually re-renders the same icon; rebuild only on a real change.
+      // Cache-entry identity tracks a refresh even when the cache key is unchanged.
+      const rendered: RenderedPreview = {
+        mode: this.iconMode,
+        emoji: visible ? this.emoji : "",
+        currencyCode: this.currencyCode,
+        cached: this.icons.iconService.getCachedIcon(previewItem),
+      };
+      if (!isSamePreviewRender(this.renderedPreview, rendered)) {
+        this.renderedPreview = rendered;
+        this.preview.empty();
+        if (visible && !this.emoji.trim()) this.preview.setText("…");
+        else renderSubscriptionIcon(this.preview, previewItem, this.icons.iconService, this.registry);
       }
     }
     let message = this.iconMode === "emoji"

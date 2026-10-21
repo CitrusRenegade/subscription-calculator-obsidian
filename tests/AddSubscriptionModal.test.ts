@@ -4,7 +4,7 @@ import type { App as ObsidianApp } from "obsidian";
 import type { SubscriptionStore } from "../src/data/SubscriptionStore";
 import { BuiltinCurrencyRegistry } from "../src/money/CurrencyRegistry";
 import { AddSubscriptionModal } from "../src/ui/AddSubscriptionModal";
-import { App, Notice, changeInput, changeSelect, expectRowVisible, findButton, findSetting, resetObsidianDom } from "./helpers/obsidianDom";
+import { App, Modal, Notice, changeInput, changeSelect, expectRowVisible, findButton, findSetting, resetObsidianDom } from "./helpers/obsidianDom";
 import { deferred } from "./helpers/deferred";
 vi.mock("obsidian", () => import("./helpers/obsidianDom"));
 function openModal(addSubscription = vi.fn(async (): Promise<void> => undefined)) {
@@ -103,6 +103,24 @@ describe("AddSubscriptionModal", () => {
     await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
     expect(addSubscription).toHaveBeenCalledTimes(2);
   });
+  it("does not close again when a save settles after the window is torn down", async () => {
+    const gate = deferred<void>();
+    const { modal, addSubscription } = openModal(vi.fn(() => gate.promise));
+    const add = findButton(modal.contentEl, "Add");
+    changeInput(findSetting(modal.contentEl, "Name").texts[0].inputEl, "Music");
+    changeInput(findSetting(modal.contentEl, "Price").texts[0].inputEl, "12.99");
+    add.click();
+    const closes = vi.spyOn(Modal.prototype, "close");
+    try {
+      modal.forceCloseOnWindowTeardown();
+      expect(closes).toHaveBeenCalledTimes(1);
+      gate.resolve();
+      // The late completion must finish its finally block without a second close.
+      await vi.waitFor(() => expect(add.disabled).toBe(false));
+      expect(closes).toHaveBeenCalledTimes(1);
+      expect(addSubscription).toHaveBeenCalledOnce();
+    } finally { closes.mockRestore(); }
+  });
   it("reveals and hides Custom days without replacing or unfocusing the period dropdown", () => {
     const { modal } = openModal();
     const period = findSetting(modal.contentEl, "Billing period").dropdowns[0].selectEl;
@@ -133,6 +151,22 @@ describe("AddSubscriptionModal", () => {
       save.resolve();
       await vi.waitFor(() => expect(modal.contentEl.isConnected).toBe(false));
     }
+  });
+  it("retains the preview DOM and focus during sequential URL typing", () => {
+    const { modal } = openModal();
+    const url = findSetting(modal.contentEl, "Service URL").texts[0].inputEl;
+    const preview = modal.contentEl.querySelector('[aria-label="Icon preview"]')!;
+    url.focus();
+    const initial = preview.firstElementChild!;
+    expect(initial).not.toBeNull();
+    changeInput(url, "netflix.com");
+    changeInput(url, "netflix.com/watch");
+    changeInput(url, "netflix.com/watch/2");
+    expect(preview.firstElementChild).toBe(initial);
+    expect(document.activeElement).toBe(url);
+    // A real display change (the currency icon) still rebuilds the preview.
+    changeSelect(findSetting(modal.contentEl, "Currency").dropdowns[0].selectEl, "EUR");
+    expect(preview.firstElementChild).not.toBe(initial);
   });
   it("keeps entered fields when the billing period changes", () => {
     const { modal } = openModal();

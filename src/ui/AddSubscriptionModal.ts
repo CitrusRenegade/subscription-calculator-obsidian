@@ -21,7 +21,6 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
   private billingPeriod: BillingPeriod = "monthly";
   private customDays = DEFAULT_CUSTOM_BILLING_PERIOD_DAYS;
   private disabled = false;
-  private submitting = false;
   private addButton: ButtonComponent | null = null;
 
   constructor(
@@ -121,8 +120,9 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
     this.addButton = new ButtonComponent(actions)
       .setButtonText("Add")
       .setCta()
-      .setDisabled(this.submitting)
       .onClick(() => void this.submit());
+    this.trackBusyButton(() => this.addButton);
+    this.trackBusyTarget(this.fields);
     this.captureInitialValues();
   }
 
@@ -134,10 +134,7 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
     return priceValid && daysValid;
   }
 
-  protected isSaving(): boolean { return this.submitting; }
-
   private async submit(): Promise<void> {
-    if (this.submitting) return;
     this.submitted = true;
     const detailsValid = this.fields.validate();
     const financialValid = this.validateFinancialFields();
@@ -145,11 +142,7 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
       focusFirstInvalid(this.contentEl);
       return;
     }
-    this.submitting = true;
-    this.setFormBusy(true);
-    this.addButton?.setDisabled(true);
-    this.fields.setBusy(true);
-    try {
+    await this.runOperation(async () => {
       await this.store.addSubscription({
         ...this.fields.getPatch(),
         priceText: this.price,
@@ -160,13 +153,6 @@ export class AddSubscriptionModal extends UnsavedChangesModal {
         status: this.disabled ? "disabled" : "enabled",
       });
       this.closeAfterSave();
-    } catch (e) {
-      new Notice(e instanceof Error ? e.message : "Failed to add subscription");
-    } finally {
-      this.submitting = false;
-      this.setFormBusy(false);
-      this.addButton?.setDisabled(false);
-      this.fields.setBusy(false);
-    }
+    }, { onError: (e) => new Notice(e instanceof Error ? e.message : "Failed to add subscription") });
   }
 }

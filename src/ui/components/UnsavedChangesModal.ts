@@ -30,6 +30,12 @@ interface ConfirmationOptions {
   onSettle?: () => void;
 }
 
+/** A registered part of a form whose availability follows the running operation. */
+export interface OperationBusyTarget {
+  /** Freeze while an operation runs; release must restore derived availability. */
+  setBusy(busy: boolean): void;
+}
+
 /** Shared confirm/cancel dialog: busy refusal, inline errors, teardown safety. */
 export class ConfirmationModal extends Modal {
   private settled = false;
@@ -105,18 +111,56 @@ export class ConfirmationModal extends Modal {
   }
 }
 
-/** Owns dismissal for both subscription forms; saving bypasses the draft prompt. */
+/** Owns dismissal and the shared operation busy state for all subscription forms. */
 export abstract class UnsavedChangesModal extends Modal {
   private baseline: string | null = null;
   private confirmation: ConfirmationModal | null = null;
   private readonly busyNoticeAt = { value: 0 };
   private readonly disabledControls = new Map<HTMLInputElement | HTMLSelectElement | HTMLButtonElement, boolean>();
+  private readonly busyTargets = new Set<OperationBusyTarget>();
+  private operationRunning = false;
   private tearingDown = false;
   private forceClosed = false;
 
-  protected abstract isSaving(): boolean;
+  protected isSaving(): boolean { return this.operationRunning; }
 
   protected captureInitialValues(): void { this.baseline = this.values(); }
+
+  /** Registers a form cluster that freezes while any operation runs. */
+  protected trackBusyTarget(target: OperationBusyTarget): void { this.busyTargets.add(target); }
+
+  /** Tracks an action button so every operation freezes it, not just its own. */
+  protected trackBusyButton(getButton: () => ButtonComponent | null): void {
+    this.trackBusyTarget({ setBusy: (busy) => { getButton()?.setDisabled(busy); } });
+  }
+
+  /**
+   * Single busy path for one form operation: re-entry guard, close refusal
+   * through isSaving, the blanket field lock and every tracked target. Lock
+   * "fields" freezes inputs and selects, "fields-and-buttons" also freezes
+   * buttons, "none" keeps the draft editable while tracked targets still
+   * freeze (icon refresh). Errors surface through onError; without a handler
+   * the cause rethrows so an embedding dialog keeps its own error display.
+   */
+  protected async runOperation(run: () => Promise<void>, options: {
+    lock?: "fields" | "fields-and-buttons" | "none";
+    onError?: (cause: unknown) => void;
+  } = {}): Promise<void> {
+    if (this.operationRunning) return;
+    this.operationRunning = true;
+    if (options.lock !== "none") this.setFormBusy(true, options.lock === "fields-and-buttons");
+    for (const target of this.busyTargets) target.setBusy(true);
+    try {
+      await run();
+    } catch (cause) {
+      if (options.onError) options.onError(cause);
+      else throw cause;
+    } finally {
+      this.operationRunning = false;
+      this.setFormBusy(false);
+      for (const target of this.busyTargets) target.setBusy(false);
+    }
+  }
 
   protected setFormBusy(busy: boolean, includeButtons = false): void {
     if (busy) {

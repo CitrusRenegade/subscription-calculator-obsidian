@@ -10,7 +10,6 @@ import { SubscriptionDetailsFields, type SubscriptionIconContext } from "./compo
 export class EditSubscriptionModal extends UnsavedChangesModal {
   private readonly fields: SubscriptionDetailsFields;
   private saveButton: ButtonComponent | null = null;
-  private busy = false;
   private enabled: boolean;
   private readonly initialEnabled: boolean;
 
@@ -41,19 +40,15 @@ export class EditSubscriptionModal extends UnsavedChangesModal {
     new ButtonComponent(actions).setButtonText("Cancel").onClick(() => this.close());
     this.saveButton = new ButtonComponent(actions)
       .setButtonText("Save").setCta().onClick(() => void this.runAction("save"));
+    this.trackBusyButton(() => this.saveButton);
+    this.trackBusyTarget(this.fields);
     this.captureInitialValues();
   }
 
-  protected isSaving(): boolean { return this.busy; }
-
   private async runAction(action: "save" | "refresh"): Promise<void> {
-    if (this.busy || (action === "refresh" && !this.fields.canRefresh())) return;
+    if (action === "refresh" && !this.fields.canRefresh()) return;
     if (action === "save" && !this.fields.validate()) { focusFirstInvalid(this.contentEl); return; }
-    this.busy = true;
-    if (action === "save") this.setFormBusy(true);
-    this.fields.setBusy(true);
-    this.saveButton?.setDisabled(true);
-    try {
+    await this.runOperation(async () => {
       if (action === "save") {
         await this.store.updateSubscription(this.item.id, {
           ...this.fields.getPatch(),
@@ -76,14 +71,9 @@ export class EditSubscriptionModal extends UnsavedChangesModal {
           snapshot?.data.subscriptions.find((item) => item.id === this.item.id)
         );
       }
-    } catch (e) {
-      if (action === "refresh") this.fields.setRefreshResult("Could not refresh the website icon. Try again.");
-      else new Notice(e instanceof Error ? e.message : "Failed to save subscription");
-    } finally {
-      this.busy = false;
-      this.setFormBusy(false);
-      this.fields.setBusy(false);
-      this.saveButton?.setDisabled(false);
-    }
+    }, action === "save"
+      ? { onError: (e) => new Notice(e instanceof Error ? e.message : "Failed to save subscription") }
+      // A refresh keeps the draft editable and reports its result inline.
+      : { lock: "none", onError: () => this.fields.setRefreshResult("Could not refresh the website icon. Try again.") });
   }
 }

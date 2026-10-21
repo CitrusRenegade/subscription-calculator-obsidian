@@ -15,7 +15,6 @@ export class CustomCurrencyModal extends UnsavedChangesModal {
   private label: string;
   private marker: string;
   private scale: number;
-  private busy = false;
   private removing = false;
   private labelFeedback!: FormFieldFeedback;
   private markerFeedback!: FormFieldFeedback;
@@ -29,8 +28,6 @@ export class CustomCurrencyModal extends UnsavedChangesModal {
     this.marker = currency?.amountMarker ?? "";
     this.scale = currency?.scale ?? 2;
   }
-
-  protected isSaving(): boolean { return this.busy; }
 
   onOpen(): void {
     const content = this.contentEl;
@@ -56,6 +53,12 @@ export class CustomCurrencyModal extends UnsavedChangesModal {
       dropdown.setValue(String(this.scale)); dropdown.selectEl.disabled = used;
       dropdown.selectEl.setAttribute("aria-label", "Price format");
       dropdown.onChange((value) => { this.scale = Number(value); update(); });
+    });
+    this.trackBusyTarget({
+      // The format select re-derives its own used-currency lock on release.
+      setBusy: (busy) => {
+        this.formatSelect.disabled = busy || (!!this.currency && this.store.isCurrencyUsed(this.currency.code));
+      },
     });
     if (used) format.controlEl.createDiv({ cls: "subscription-calculator-form-hint", text: "Locked because this currency is used by subscriptions." });
     const preview = content.createDiv({ cls: "subscription-calculator-currency-preview", attr: { role: "status", "aria-live": "polite" } });
@@ -93,26 +96,22 @@ export class CustomCurrencyModal extends UnsavedChangesModal {
     return input === this.formatSelect;
   }
 
-  private setBusy(busy: boolean): void {
-    this.busy = busy;
-    this.setFormBusy(busy, true);
-    if (!busy) this.formatSelect.disabled = !!this.currency && this.store.isCurrencyUsed(this.currency.code);
-  }
-
   private async save(): Promise<void> {
-    if (this.busy || !this.validate()) return;
-    this.formError.empty(); this.setBusy(true);
+    if (!this.validate()) return;
+    this.formError.empty();
     const input = { label: this.label, amountMarker: this.marker, scale: this.scale };
-    try {
+    await this.runOperation(async () => {
       if (this.currency) await this.store.updateCustomCurrency(this.currency.code, input);
       else await this.store.addCustomCurrency(input);
       this.closeAfterSave(); this.onSaved();
-    } catch (cause) { this.formError.setText(cause instanceof Error ? cause.message : "Could not save currency."); }
-    finally { this.setBusy(false); }
+    }, {
+      lock: "fields-and-buttons",
+      onError: (cause) => this.formError.setText(cause instanceof Error ? cause.message : "Could not save currency."),
+    });
   }
 
   private confirmRemoval(): void {
-    if (!this.currency || this.busy || this.removing) return;
+    if (!this.currency || this.isSaving() || this.removing) return;
     const used = this.store.isCurrencyUsed(this.currency.code);
     this.removing = true;
     let created: ConfirmationModal | undefined;
@@ -128,11 +127,11 @@ export class CustomCurrencyModal extends UnsavedChangesModal {
           warning: true,
           busyNotice: "Removing this currency is still in progress. Please wait before closing.",
           errorFallback: "Could not remove currency.",
-          onConfirm: async () => {
-            this.setBusy(true);
-            try { await this.store.deleteCustomCurrency(this.currency!.code); this.closeAfterSave(); this.onSaved(); }
-            finally { this.setBusy(false); }
-          },
+          // No onError: the confirmation dialog displays the failure itself.
+          onConfirm: () => this.runOperation(async () => {
+            await this.store.deleteCustomCurrency(this.currency!.code);
+            this.closeAfterSave(); this.onSaved();
+          }, { lock: "fields-and-buttons" }),
           onSettle: () => { this.removing = false; },
         });
         return created;
