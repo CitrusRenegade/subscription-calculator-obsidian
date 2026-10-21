@@ -40,7 +40,7 @@ src/
         ├── SubscriptionDetailsFields.ts  Shared Add/Edit draft and detail controls
         ├── SubscriptionIcon.ts        Shared card, table and form icon rendering
         ├── FormFieldFeedback.ts       Accessible labels and inline validation
-        ├── UnsavedChangesModal.ts     Shared dirty-form dismissal and confirmations
+        ├── UnsavedChangesModal.ts     Shared form operations, busy state and dirty-form dismissal
         ├── openModalInDocument.ts     Source-window dialogs and duplicate-open guard
         ├── FormControls.ts
         ├── SubscriptionCard.ts
@@ -88,4 +88,6 @@ Clearing or replacing an icon must keep those two sides consistent.
 
 Tests cover calculation, store and migration behavior, plugin lifecycle, settings, dialogs, cards, icons, styling, backup, and build support. Check the current `tests/*.test.ts` files for exact coverage; Obsidian visual behavior still needs a configured live test vault.
 
-`src/ui/components/UnsavedChangesModal.ts` owns shared dirty-form dismissal and discard confirmation for Add and Edit.
+`src/ui/components/UnsavedChangesModal.ts` owns shared operation/busy state and dirty-form dismissal for Add, Edit and custom-currency dialogs.
+
+`tests/native/` runs real-Obsidian checks via `npm run smoke:native`, separately from `npm run check`. Setup and recovery: `tests/README.md`.

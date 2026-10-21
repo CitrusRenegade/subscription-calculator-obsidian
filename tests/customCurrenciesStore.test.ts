@@ -52,7 +52,7 @@ describe("custom currency store rules", () => {
     expect(data.customCurrencies[0]?.code).toMatch(/^CUSTOM_[A-Z0-9]+$/);
   });
 
-  it("only creates custom currencies with MVP price formats", async () => {
+  it("only creates custom currencies with supported price formats", async () => {
     const data = createDefaultData();
     const store = createStore(data);
 
@@ -114,7 +114,7 @@ describe("custom currency store rules", () => {
     expect(data.customCurrencies[0]?.scale).toBe(2);
   });
 
-  it("does not allow unused MVP currencies to switch to advanced precision", async () => {
+  it("does not allow unused currencies to switch to unsupported precision", async () => {
     const data = createDefaultData();
     data.customCurrencies = [{ ...customCurrency }];
     const store = createStore(data);

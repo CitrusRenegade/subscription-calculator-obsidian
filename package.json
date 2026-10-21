@@ -18,6 +18,7 @@
     "lint:obsidian": "eslint src/ tests/",
     "lint:css": "stylelint styles.css",
     "lint:manifest": "node scripts/check-manifest.mjs",
+    "smoke:native": "node tests/native/run-native-smoke.mjs",
     "check": "npm test && npm run build && npm run lint:obsidian && npm run lint:css && npm run lint:manifest",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
